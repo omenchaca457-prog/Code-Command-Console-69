@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useListSnippets, useDeleteSnippet, getListSnippetsQueryKey, getGetRecentSnippetsQueryKey } from "@workspace/api-client-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Search, Code2, Trash2, ExternalLink, Calendar, Terminal } from "lucide-react";
+import { Search, Trash2, Terminal, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function Snippets() {
   const [, setLocation] = useLocation();
@@ -16,121 +15,127 @@ export default function Snippets() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
 
-  const filteredSnippets = snippets?.filter(s => 
-    s.title.toLowerCase().includes(search.toLowerCase()) || 
+  const filteredSnippets = snippets?.filter(s =>
+    s.title.toLowerCase().includes(search.toLowerCase()) ||
     s.language.toLowerCase().includes(search.toLowerCase())
   ) || [];
 
   const handleDelete = (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Are you sure you want to delete this snippet?")) return;
-
+    if (!confirm("Delete this snippet?")) return;
     deleteSnippetMutation.mutate({ id }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListSnippetsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetRecentSnippetsQueryKey() });
-        toast({ title: "Snippet deleted" });
+        toast({ title: "// DELETED" });
       },
-      onError: () => {
-        toast({ title: "Failed to delete", variant: "destructive" });
-      }
+      onError: () => toast({ title: "DELETE FAILED", variant: "destructive" })
     });
   };
 
-  const openSnippet = (id: number) => {
-    setLocation(`/?snippetId=${id}`);
-  };
+  const openSnippet = (id: number) => setLocation(`/?snippetId=${id}`);
 
   return (
-    <div className="container max-w-5xl mx-auto py-8 px-4 h-full flex flex-col">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+    <div className="flex flex-col h-full bg-[#070707]">
+      {/* Header */}
+      <div className="border-b border-[#ff003c]/15 bg-[#060606] px-6 py-3 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
         <div>
-          <h1 className="text-3xl font-bold font-mono tracking-tight text-primary">Library</h1>
-          <p className="text-muted-foreground mt-2">Manage and run your saved code snippets.</p>
+          <h1 className="text-xs font-mono font-bold tracking-[0.25em] uppercase text-[#ff003c]" style={{ textShadow: "0 0 10px #ff003c60" }}>
+            // CODE LIBRARY
+          </h1>
+          <p className="text-[10px] font-mono text-[#333] tracking-widest uppercase mt-0.5">
+            {filteredSnippets.length} snippet{filteredSnippets.length !== 1 ? 's' : ''} stored
+          </p>
         </div>
+
         <div className="relative w-full md:w-72">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search snippets..."
-            className="pl-9 bg-card border-border"
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3 w-3 text-[#333]" />
+          <input
+            placeholder="SEARCH LIBRARY..."
+            className="w-full bg-[#040404] border border-[#ff003c]/20 pl-8 pr-3 py-2 font-mono text-xs text-[#888] placeholder:text-[#2a2a2a] placeholder:tracking-widest focus:outline-none focus:border-[#ff003c]/50 tracking-wider uppercase"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <ScrollArea className="flex-1 p-4 md:p-6">
         {isLoading ? (
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3, 4, 5, 6].map(i => (
-              <div key={i} className="h-40 rounded-lg bg-card/50 border border-border animate-pulse" />
+              <div key={i} className="h-36 bg-[#0a0a0a] border border-[#111] animate-pulse" />
             ))}
           </div>
         ) : filteredSnippets.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-center border rounded-lg bg-card/30 border-dashed">
-            <Terminal className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">No snippets found</h3>
-            <p className="text-muted-foreground max-w-sm mt-1">
-              {search ? "No snippets match your search criteria." : "You haven't saved any snippets yet. Go to the workspace to create one."}
+          <div className="flex flex-col items-center justify-center h-64 text-center border border-dashed border-[#1a1a1a]">
+            <Terminal className="h-8 w-8 text-[#222] mb-4" />
+            <p className="text-[10px] font-mono text-[#2a2a2a] tracking-widest uppercase">
+              {search ? `— no results for "${search}" —` : "— library empty —"}
             </p>
             {!search && (
-              <Button className="mt-4" onClick={() => setLocation("/")}>
-                Go to Workspace
-              </Button>
+              <button
+                onClick={() => setLocation("/")}
+                className="mt-4 px-4 py-1.5 font-mono text-[10px] tracking-widest uppercase text-[#ff003c]/60 border border-[#ff003c]/20 hover:border-[#ff003c]/50 hover:text-[#ff003c] hover:bg-[#ff003c]/5 transition-all"
+              >
+                GO TO WORKSPACE
+              </button>
             )}
           </div>
         ) : (
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 max-w-7xl">
             {filteredSnippets.map(snippet => (
-              <div 
-                key={snippet.id} 
-                className="group relative flex flex-col rounded-lg border border-border bg-card p-5 hover:border-primary/50 transition-colors cursor-pointer"
+              <div
+                key={snippet.id}
+                className="group flex flex-col border border-[#111] bg-[#060606] hover:border-[#ff003c]/25 transition-all cursor-pointer"
                 onClick={() => openSnippet(snippet.id)}
               >
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="font-semibold text-lg line-clamp-1 group-hover:text-primary transition-colors">{snippet.title}</h3>
-                  <span className="inline-flex items-center rounded-sm bg-secondary px-2 py-0.5 text-xs font-mono font-medium text-secondary-foreground">
+                {/* Card header */}
+                <div className="flex items-center justify-between px-3 py-2 border-b border-[#0f0f0f] bg-[#040404]">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <ChevronRight className="h-3 w-3 text-[#ff003c]/30 group-hover:text-[#ff003c]/70 flex-shrink-0 transition-colors" />
+                    <span className="font-mono text-xs text-[#888] group-hover:text-[#ccc] truncate transition-colors">
+                      {snippet.title}
+                    </span>
+                  </div>
+                  <span className="text-[9px] font-mono uppercase tracking-[0.2em] text-[#ff003c]/50 border border-[#ff003c]/15 px-1.5 py-0.5 flex-shrink-0 ml-2">
                     {snippet.language}
                   </span>
                 </div>
-                
-                <div className="bg-black/50 rounded p-3 mb-4 flex-1 border border-border/50 relative overflow-hidden">
-                  <pre className="font-mono text-xs text-muted-foreground line-clamp-3 whitespace-pre-wrap">
+
+                {/* Code preview */}
+                <div className="flex-1 bg-black px-3 py-2.5 overflow-hidden relative" style={{ minHeight: "80px" }}>
+                  <pre className="font-mono text-[11px] text-[#00ff41]/60 line-clamp-3 whitespace-pre-wrap leading-relaxed">
                     {snippet.code}
                   </pre>
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+                  <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-black to-transparent pointer-events-none" />
                 </div>
-                
-                <div className="flex items-center justify-between mt-auto">
-                  <div className="flex items-center text-xs text-muted-foreground font-mono">
-                    <Calendar className="mr-1 h-3 w-3" />
+
+                {/* Footer */}
+                <div className="flex items-center justify-between px-3 py-2 border-t border-[#0f0f0f]">
+                  <span className="text-[9px] font-mono text-[#2a2a2a] tracking-wider uppercase">
                     {format(new Date(snippet.updatedAt), "MMM d, yyyy")}
-                  </div>
-                  
-                  <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  </span>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
                       onClick={(e) => handleDelete(snippet.id, e)}
+                      className="p-1 text-[#333] hover:text-[#ff4040] transition-colors"
+                      title="Delete"
                     >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="secondary" 
-                      size="sm" 
-                      className="h-8 gap-1"
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                    <button
+                      className="px-2 py-0.5 font-mono text-[9px] tracking-widest uppercase text-[#ff003c]/60 border border-[#ff003c]/20 hover:bg-[#ff003c]/10 hover:text-[#ff003c] transition-all"
+                      onClick={(e) => { e.stopPropagation(); openSnippet(snippet.id); }}
                     >
-                      <Code2 className="h-3 w-3" />
-                      Open
-                    </Button>
+                      OPEN
+                    </button>
                   </div>
                 </div>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </ScrollArea>
     </div>
   );
 }
