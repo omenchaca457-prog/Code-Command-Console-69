@@ -17,6 +17,11 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AiChatRequest,
+  AiChatResponse,
+  AiCodeResponse,
+  AiExplainRequest,
+  AiImproveRequest,
   CreateSnippetBody,
   ExecuteRequest,
   ExecuteResult,
@@ -506,6 +511,264 @@ export function useGetRecentSnippets<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Chat with AI assistant
+ */
+export const getAiChatUrl = () => {
+  return `/api/ai/chat`;
+};
+
+export const aiChat = async (
+  aiChatRequest: AiChatRequest,
+  options?: RequestInit,
+): Promise<AiChatResponse> => {
+  return customFetch<AiChatResponse>(getAiChatUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(aiChatRequest),
+  });
+};
+
+export const getAiChatMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof aiChat>>,
+    TError,
+    { data: BodyType<AiChatRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof aiChat>>,
+  TError,
+  { data: BodyType<AiChatRequest> },
+  TContext
+> => {
+  const mutationKey = ["aiChat"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof aiChat>>,
+    { data: BodyType<AiChatRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return aiChat(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AiChatMutationResult = NonNullable<
+  Awaited<ReturnType<typeof aiChat>>
+>;
+export type AiChatMutationBody = BodyType<AiChatRequest>;
+export type AiChatMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Chat with AI assistant
+ */
+export const useAiChat = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof aiChat>>,
+    TError,
+    { data: BodyType<AiChatRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof aiChat>>,
+  TError,
+  { data: BodyType<AiChatRequest> },
+  TContext
+> => {
+  return useMutation(getAiChatMutationOptions(options));
+};
+
+/**
+ * @summary Explain code using AI
+ */
+export const getAiExplainUrl = () => {
+  return `/api/ai/explain`;
+};
+
+export const aiExplain = async (
+  aiExplainRequest: AiExplainRequest,
+  options?: RequestInit,
+): Promise<AiCodeResponse> => {
+  return customFetch<AiCodeResponse>(getAiExplainUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(aiExplainRequest),
+  });
+};
+
+export const getAiExplainMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof aiExplain>>,
+    TError,
+    { data: BodyType<AiExplainRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof aiExplain>>,
+  TError,
+  { data: BodyType<AiExplainRequest> },
+  TContext
+> => {
+  const mutationKey = ["aiExplain"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof aiExplain>>,
+    { data: BodyType<AiExplainRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return aiExplain(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AiExplainMutationResult = NonNullable<
+  Awaited<ReturnType<typeof aiExplain>>
+>;
+export type AiExplainMutationBody = BodyType<AiExplainRequest>;
+export type AiExplainMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Explain code using AI
+ */
+export const useAiExplain = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof aiExplain>>,
+    TError,
+    { data: BodyType<AiExplainRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof aiExplain>>,
+  TError,
+  { data: BodyType<AiExplainRequest> },
+  TContext
+> => {
+  return useMutation(getAiExplainMutationOptions(options));
+};
+
+/**
+ * @summary Improve or fix code using AI
+ */
+export const getAiImproveUrl = () => {
+  return `/api/ai/improve`;
+};
+
+export const aiImprove = async (
+  aiImproveRequest: AiImproveRequest,
+  options?: RequestInit,
+): Promise<AiCodeResponse> => {
+  return customFetch<AiCodeResponse>(getAiImproveUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(aiImproveRequest),
+  });
+};
+
+export const getAiImproveMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof aiImprove>>,
+    TError,
+    { data: BodyType<AiImproveRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof aiImprove>>,
+  TError,
+  { data: BodyType<AiImproveRequest> },
+  TContext
+> => {
+  const mutationKey = ["aiImprove"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof aiImprove>>,
+    { data: BodyType<AiImproveRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return aiImprove(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AiImproveMutationResult = NonNullable<
+  Awaited<ReturnType<typeof aiImprove>>
+>;
+export type AiImproveMutationBody = BodyType<AiImproveRequest>;
+export type AiImproveMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Improve or fix code using AI
+ */
+export const useAiImprove = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof aiImprove>>,
+    TError,
+    { data: BodyType<AiImproveRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof aiImprove>>,
+  TError,
+  { data: BodyType<AiImproveRequest> },
+  TContext
+> => {
+  return useMutation(getAiImproveMutationOptions(options));
+};
 
 /**
  * @summary Get a snippet by ID

@@ -12,9 +12,12 @@ const LANGUAGES = [
   { id: "typescript", name: "TypeScript", extension: "ts", monacoLanguage: "typescript" },
   { id: "python", name: "Python", extension: "py", monacoLanguage: "python" },
   { id: "bash", name: "Bash", extension: "sh", monacoLanguage: "shell" },
+  { id: "c", name: "C", extension: "c", monacoLanguage: "c" },
+  { id: "cpp", name: "C++", extension: "cpp", monacoLanguage: "cpp" },
+  { id: "perl", name: "Perl", extension: "pl", monacoLanguage: "perl" },
 ];
 
-const TIMEOUT_MS = 10000;
+const TIMEOUT_MS = 15000;
 
 router.get("/languages", (_req, res) => {
   res.json({ languages: LANGUAGES });
@@ -58,6 +61,35 @@ router.post("/execute", async (req, res) => {
       filePath = join(tmpDir, "script.sh");
       await writeFile(filePath, code, "utf8");
       cmd = "bash";
+      args = [filePath];
+    } else if (language === "c") {
+      filePath = join(tmpDir, "script.c");
+      await writeFile(filePath, code, "utf8");
+      const outFile = join(tmpDir, "a.out");
+      const compileResult = await runProcess("gcc", [filePath, "-o", outFile, "-lm"], "", 10000);
+      if (compileResult.exitCode !== 0) {
+        const execTime = (Date.now() - startTime) / 1000;
+        res.json({ stdout: "", stderr: compileResult.stderr, exitCode: compileResult.exitCode, executionTime: execTime });
+        return;
+      }
+      cmd = outFile;
+      args = [];
+    } else if (language === "cpp") {
+      filePath = join(tmpDir, "script.cpp");
+      await writeFile(filePath, code, "utf8");
+      const outFile = join(tmpDir, "a.out");
+      const compileResult = await runProcess("g++", [filePath, "-o", outFile, "-std=c++17", "-lm"], "", 10000);
+      if (compileResult.exitCode !== 0) {
+        const execTime = (Date.now() - startTime) / 1000;
+        res.json({ stdout: "", stderr: compileResult.stderr, exitCode: compileResult.exitCode, executionTime: execTime });
+        return;
+      }
+      cmd = outFile;
+      args = [];
+    } else if (language === "perl") {
+      filePath = join(tmpDir, "script.pl");
+      await writeFile(filePath, code, "utf8");
+      cmd = "perl";
       args = [filePath];
     } else {
       res.status(400).json({ error: `Unsupported language: ${language}` });

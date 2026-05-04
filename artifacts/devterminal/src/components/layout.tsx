@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { TerminalSquare, LibrarySquare, Github } from "lucide-react";
+import { TerminalSquare, LibrarySquare, Github, Cpu, ShieldAlert } from "lucide-react";
 import { useHealthCheck } from "@workspace/api-client-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -28,6 +28,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               <LibrarySquare className="h-4 w-4" />
               Library
+            </Link>
+            <Link 
+              href="/ai" 
+              className={`flex items-center gap-2 transition-colors hover:text-primary ${location === '/ai' ? 'text-primary' : 'text-muted-foreground'}`}
+            >
+              <Cpu className="h-4 w-4" />
+              AI Assistant
+            </Link>
+            <Link 
+              href="/tools" 
+              className={`flex items-center gap-2 transition-colors hover:text-primary ${location === '/tools' ? 'text-primary' : 'text-muted-foreground'}`}
+            >
+              <ShieldAlert className="h-4 w-4" />
+              Tools
             </Link>
           </nav>
         </div>

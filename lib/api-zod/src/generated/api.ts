@@ -84,6 +84,46 @@ export const GetRecentSnippetsResponse = zod.array(
 );
 
 /**
+ * @summary Chat with AI assistant
+ */
+export const AiChatBody = zod.object({
+  message: zod.string(),
+  context: zod.string().nullish(),
+  language: zod.string().nullish(),
+});
+
+export const AiChatResponse = zod.object({
+  response: zod.string(),
+  conversationId: zod.number(),
+});
+
+/**
+ * @summary Explain code using AI
+ */
+export const AiExplainBody = zod.object({
+  code: zod.string(),
+  language: zod.string(),
+  output: zod.string().nullish(),
+});
+
+export const AiExplainResponse = zod.object({
+  result: zod.string(),
+});
+
+/**
+ * @summary Improve or fix code using AI
+ */
+export const AiImproveBody = zod.object({
+  code: zod.string(),
+  language: zod.string(),
+  instruction: zod.string().nullish(),
+});
+
+export const AiImproveResponse = zod.object({
+  result: zod.string(),
+});
+
+/**
  * @summary Get a snippet by ID
  */
 export const GetSnippetParams = zod.object({

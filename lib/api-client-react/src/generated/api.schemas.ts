@@ -64,3 +64,43 @@ export interface UpdateSnippetBody {
   code?: string;
   language?: string;
 }
+
+export type AiMessageRole = (typeof AiMessageRole)[keyof typeof AiMessageRole];
+
+export const AiMessageRole = {
+  user: "user",
+  assistant: "assistant",
+  system: "system",
+} as const;
+
+export interface AiMessage {
+  role: AiMessageRole;
+  content: string;
+}
+
+export interface AiChatRequest {
+  message: string;
+  context?: string | null;
+  language?: string | null;
+}
+
+export interface AiChatResponse {
+  response: string;
+  conversationId: number;
+}
+
+export interface AiExplainRequest {
+  code: string;
+  language: string;
+  output?: string | null;
+}
+
+export interface AiImproveRequest {
+  code: string;
+  language: string;
+  instruction?: string | null;
+}
+
+export interface AiCodeResponse {
+  result: string;
+}

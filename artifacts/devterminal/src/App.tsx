@@ -6,7 +6,10 @@ import { useEffect } from "react";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import Snippets from "@/pages/snippets";
+import AI from "@/pages/ai";
+import Tools from "@/pages/tools";
 import { Layout } from "@/components/layout";
+import { AppProvider } from "@/lib/app-context";
 
 const queryClient = new QueryClient();
 
@@ -16,6 +19,8 @@ function Router() {
       <Switch>
         <Route path="/" component={Home} />
         <Route path="/snippets" component={Snippets} />
+        <Route path="/ai" component={AI} />
+        <Route path="/tools" component={Tools} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
@@ -31,10 +36,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
+        <AppProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+        </AppProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

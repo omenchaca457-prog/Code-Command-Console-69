@@ -6,6 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./aiChatRequest";
+export * from "./aiChatResponse";
+export * from "./aiCodeResponse";
+export * from "./aiExplainRequest";
+export * from "./aiImproveRequest";
+export * from "./aiMessage";
+export * from "./aiMessageRole";
 export * from "./createSnippetBody";
 export * from "./executeRequest";
 export * from "./executeRequestLanguage";

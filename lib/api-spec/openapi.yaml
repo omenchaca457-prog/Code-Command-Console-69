@@ -14,6 +14,8 @@ tags:
     description: Code execution
   - name: snippets
     description: Code snippets management
+  - name: ai
+    description: AI assistant
 paths:
   /healthz:
     get:
@@ -106,6 +108,63 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Snippet"
+
+  /ai/chat:
+    post:
+      operationId: aiChat
+      tags: [ai]
+      summary: Chat with AI assistant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiChatRequest"
+      responses:
+        "200":
+          description: AI response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiChatResponse"
+
+  /ai/explain:
+    post:
+      operationId: aiExplain
+      tags: [ai]
+      summary: Explain code using AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiExplainRequest"
+      responses:
+        "200":
+          description: AI explanation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiCodeResponse"
+
+  /ai/improve:
+    post:
+      operationId: aiImprove
+      tags: [ai]
+      summary: Improve or fix code using AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiImproveRequest"
+      responses:
+        "200":
+          description: AI improved code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiCodeResponse"
 
   /snippets/{id}:
     get:
@@ -281,3 +340,76 @@ components:
           type: string
         language:
           type: string
+
+    AiMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant, system]
+        content:
+          type: string
+      required:
+        - role
+        - content
+
+    AiChatRequest:
+      type: object
+      properties:
+        message:
+          type: string
+        context:
+          type: string
+          nullable: true
+        language:
+          type: string
+          nullable: true
+      required:
+        - message
+
+    AiChatResponse:
+      type: object
+      properties:
+        response:
+          type: string
+        conversationId:
+          type: integer
+      required:
+        - response
+        - conversationId
+
+    AiExplainRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        language:
+          type: string
+        output:
+          type: string
+          nullable: true
+      required:
+        - code
+        - language
+
+    AiImproveRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        language:
+          type: string
+        instruction:
+          type: string
+          nullable: true
+      required:
+        - code
+        - language
+
+    AiCodeResponse:
+      type: object
+      properties:
+        result:
+          type: string
+      required:
+        - result
