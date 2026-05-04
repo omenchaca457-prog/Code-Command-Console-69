@@ -3,20 +3,23 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: DevTerminal API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: execute
+    description: Code execution
+  - name: snippets
+    description: Code snippets management
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +27,143 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /execute:
+    post:
+      operationId: executeCode
+      tags: [execute]
+      summary: Execute code in a given language
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecuteRequest"
+      responses:
+        "200":
+          description: Execution result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecuteResult"
+
+  /languages:
+    get:
+      operationId: getLanguages
+      tags: [execute]
+      summary: Get supported languages
+      responses:
+        "200":
+          description: List of supported languages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LanguageList"
+
+  /snippets:
+    get:
+      operationId: listSnippets
+      tags: [snippets]
+      summary: List all saved snippets
+      responses:
+        "200":
+          description: List of snippets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Snippet"
+    post:
+      operationId: createSnippet
+      tags: [snippets]
+      summary: Save a new code snippet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSnippetBody"
+      responses:
+        "201":
+          description: Created snippet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snippet"
+
+  /snippets/recent:
+    get:
+      operationId: getRecentSnippets
+      tags: [snippets]
+      summary: Get the 5 most recently used snippets
+      responses:
+        "200":
+          description: Recent snippets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Snippet"
+
+  /snippets/{id}:
+    get:
+      operationId: getSnippet
+      tags: [snippets]
+      summary: Get a snippet by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Snippet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snippet"
+        "404":
+          description: Not found
+    put:
+      operationId: updateSnippet
+      tags: [snippets]
+      summary: Update a snippet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSnippetBody"
+      responses:
+        "200":
+          description: Updated snippet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snippet"
+    delete:
+      operationId: deleteSnippet
+      tags: [snippets]
+      summary: Delete a snippet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +174,110 @@ components:
       required:
         - status
 
+    ExecuteRequest:
+      type: object
+      properties:
+        language:
+          type: string
+          enum: [javascript, python, bash, typescript]
+        code:
+          type: string
+        stdin:
+          type: string
+      required:
+        - language
+        - code
+
+    ExecuteResult:
+      type: object
+      properties:
+        stdout:
+          type: string
+        stderr:
+          type: string
+        exitCode:
+          type: integer
+        executionTime:
+          type: number
+      required:
+        - stdout
+        - stderr
+        - exitCode
+        - executionTime
+
+    Language:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        extension:
+          type: string
+        monacoLanguage:
+          type: string
+      required:
+        - id
+        - name
+        - extension
+        - monacoLanguage
+
+    LanguageList:
+      type: object
+      properties:
+        languages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Language"
+      required:
+        - languages
+
+    Snippet:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        code:
+          type: string
+        language:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        lastRunAt:
+          type: string
+          nullable: true
+      required:
+        - id
+        - title
+        - code
+        - language
+        - createdAt
+        - updatedAt
+
+    CreateSnippetBody:
+      type: object
+      properties:
+        title:
+          type: string
+        code:
+          type: string
+        language:
+          type: string
+      required:
+        - title
+        - code
+        - language
+
+    UpdateSnippetBody:
+      type: object
+      properties:
+        title:
+          type: string
+        code:
+          type: string
+        language:
+          type: string
