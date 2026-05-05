@@ -8,6 +8,7 @@ import Home from "@/pages/home";
 import Snippets from "@/pages/snippets";
 import AI from "@/pages/ai";
 import Tools from "@/pages/tools";
+import Runner from "@/pages/runner";
 import { Layout } from "@/components/layout";
 import { AppProvider } from "@/lib/app-context";
 
@@ -18,6 +19,7 @@ function Router() {
     <Layout>
       <Switch>
         <Route path="/" component={Home} />
+        <Route path="/runner" component={Runner} />
         <Route path="/snippets" component={Snippets} />
         <Route path="/ai" component={AI} />
         <Route path="/tools" component={Tools} />
@@ -29,7 +31,6 @@ function Router() {
 
 function App() {
   useEffect(() => {
-    // Force dark mode
     document.documentElement.classList.add("dark");
   }, []);
 
