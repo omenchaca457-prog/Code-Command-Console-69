@@ -9,6 +9,8 @@ import Snippets from "@/pages/snippets";
 import AI from "@/pages/ai";
 import Tools from "@/pages/tools";
 import Runner from "@/pages/runner";
+import Neural from "@/pages/neural";
+import Agents from "@/pages/agents";
 import { Layout } from "@/components/layout";
 import { AppProvider } from "@/lib/app-context";
 
@@ -23,6 +25,8 @@ function Router() {
         <Route path="/snippets" component={Snippets} />
         <Route path="/ai" component={AI} />
         <Route path="/tools" component={Tools} />
+        <Route path="/neural" component={Neural} />
+        <Route path="/agents" component={Agents} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
