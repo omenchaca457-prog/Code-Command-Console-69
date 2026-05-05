@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useEffect } from "react";
 import NotFound from "@/pages/not-found";
+import TerminalPage from "@/pages/terminal";
 import Home from "@/pages/home";
 import Snippets from "@/pages/snippets";
 import AI from "@/pages/ai";
@@ -20,7 +21,8 @@ function Router() {
   return (
     <Layout>
       <Switch>
-        <Route path="/" component={Home} />
+        <Route path="/" component={TerminalPage} />
+        <Route path="/editor" component={Home} />
         <Route path="/runner" component={Runner} />
         <Route path="/snippets" component={Snippets} />
         <Route path="/ai" component={AI} />
