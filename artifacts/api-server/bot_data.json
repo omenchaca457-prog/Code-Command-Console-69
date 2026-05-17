@@ -1,0 +1,21 @@
+{
+  "chats": [
+    8190479194
+  ],
+  "stats": {
+    "mensajes_procesados": 6,
+    "start_time": "2026-05-09T16:37:03.520332",
+    "comandos_usados": {
+      "precio": 2,
+      "echo": 3,
+      "puzzle": 1
+    }
+  },
+  "banned_users": [],
+  "puzzle": {
+    "activo": true,
+    "subrango": 0,
+    "total": 0,
+    "progreso": 0.001,
+    "velocidad": 0,
+    "hilo": 

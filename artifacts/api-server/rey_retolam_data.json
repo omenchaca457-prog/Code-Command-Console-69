@@ -1,0 +1,19 @@
+{
+  "chats": [
+    8190479194
+  ],
+  "stats": {
+    "mensajes": 4,
+    "comandos": {
+      "/start": 1,
+      "/help": 1,
+      "/puzzle": 1,
+      "/status": 1
+    },
+    "start_time": "2026-05-10T22:14:22.355791"
+  },
+  "puzzle": {
+    "progreso": 11.0,
+    "activo": true
+  }
+}
