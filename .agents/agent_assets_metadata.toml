@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "AmY_5r7r8qCI_n-ELJ4Ao"
+uri = "file://backup_neuron_quant.sql"
+type = "unspecified"
+title = "Database backup"
+description = "SQL dump created as backup_neuron_quant.sql (153,190 bytes)."
+logical_id = "16770ec6-ba94-465a-a24e-bbb2bb1a76ea"
+content_hash = "sha256:1d08b951a56f53ab822ab6140180236e482513ca3d1846c2acf9888285dbeb06"
+size = 153190
+mtime_ms = 1791130627963
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:3f5fc43d-49fd-4d23-b4d9-fc1826465840/16770ec6-ba94-465a-a24e-bbb2bb1a76ea/b100132f-7d81-4d4c-9076-a93386389b82"
+storage_version_token = "1791130633142584"
+content_type = "application/octet-stream"
