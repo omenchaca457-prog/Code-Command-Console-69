@@ -14,3 +14,17 @@ mtime_ms = 1791130627963
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:3f5fc43d-49fd-4d23-b4d9-fc1826465840/16770ec6-ba94-465a-a24e-bbb2bb1a76ea/b100132f-7d81-4d4c-9076-a93386389b82"
 storage_version_token = "1791130633142584"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "Ff0MPzoS7y10wlfLTwlXT"
+uri = "file://exports/devterminal-source.zip"
+type = "unspecified"
+title = "Project source ZIP"
+description = "Complete source package with 387 files. Database files, installed dependencies, caches, and secret files are excluded."
+logical_id = "60e2383e-dfc9-4c87-9a6d-e26cbe93cbe4"
+content_hash = "sha256:ebd0249976f37721a37417e2666d2ef5d1ec04f45838e409cb9a14e9c950ce5a"
+size = 45835780
+mtime_ms = 1791267723156
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:3f5fc43d-49fd-4d23-b4d9-fc1826465840/60e2383e-dfc9-4c87-9a6d-e26cbe93cbe4/165d7a98-3e8e-4bc7-86af-b3c862a05971"
+storage_version_token = "1791267730324551"
+content_type = "application/octet-stream"
