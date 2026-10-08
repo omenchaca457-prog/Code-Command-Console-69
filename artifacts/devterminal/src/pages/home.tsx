@@ -10,6 +10,7 @@ import {
   useGetSnippet,
   getListSnippetsQueryKey,
   getGetRecentSnippetsQueryKey,
+  getGetSnippetQueryKey,
   useAiExplain,
   useAiImprove
 } from "@workspace/api-client-react";
@@ -58,9 +59,15 @@ export default function Home() {
   const { currentCode: code, setCurrentCode: setCode, currentLanguage: languageId, setCurrentLanguage: setLanguageId } = useAppContext();
 
   const { data: languagesData } = useGetLanguages();
-  const { data: recentSnippets } = useGetRecentSnippets();
+  const { data: recentSnippets, isError: recentSnippetsError } = useGetRecentSnippets();
+  const recentSnippetList = Array.isArray(recentSnippets) ? recentSnippets : [];
+  const recentSnippetsUnavailable =
+    recentSnippetsError || (recentSnippets !== undefined && !Array.isArray(recentSnippets));
   const { data: loadedSnippet, isSuccess: snippetLoaded } = useGetSnippet(Number(snippetId), {
-    query: { enabled: !!snippetId }
+    query: {
+      enabled: !!snippetId,
+      queryKey: getGetSnippetQueryKey(Number(snippetId)),
+    }
   });
 
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
@@ -284,10 +291,12 @@ export default function Home() {
         </div>
         <ScrollArea className="flex-1">
           <div className="p-1.5 space-y-0.5">
-            {!recentSnippets?.length ? (
+            {recentSnippetsUnavailable ? (
+              <div className="p-4 text-center text-[10px] font-mono text-[#ff003c]/60">— snippets unavailable —</div>
+            ) : recentSnippetList.length === 0 ? (
               <div className="p-4 text-center text-[10px] font-mono text-[#222]">— empty —</div>
             ) : (
-              recentSnippets.map(snippet => (
+              recentSnippetList.map(snippet => (
                 <button
                   key={snippet.id}
                   onClick={() => { setCode(snippet.code); if (languages.some(l => l.id === snippet.language)) setLanguageId(snippet.language); }}
