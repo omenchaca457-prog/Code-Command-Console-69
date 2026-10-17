@@ -39,7 +39,12 @@ export default function AI() {
     chatMutation.mutate({
       data: { message: userMsg, context: currentCode, language: currentLanguage }
     }, {
-      onSuccess: (res) => setMessages(prev => [...prev, { role: "assistant", content: res.response }]),
+      onSuccess: (res) => setMessages(prev => [...prev, {
+        role: "assistant",
+        content: typeof res.response === "string" && res.response.trim()
+          ? res.response
+          : "The AI returned no response."
+      }]),
       onError: () => toast({ title: "CONNECTION FAILED", description: "Neural link disrupted.", variant: "destructive" })
     });
   };
@@ -51,7 +56,12 @@ export default function AI() {
     }
     setMessages(prev => [...prev, { role: "user", content: `Analyze the current ${currentLanguage} code.` }]);
     explainMutation.mutate({ data: { code: currentCode, language: currentLanguage } }, {
-      onSuccess: (res) => setMessages(prev => [...prev, { role: "assistant", content: res.explanation }]),
+      onSuccess: (res) => setMessages(prev => [...prev, {
+        role: "assistant",
+        content: typeof res.result === "string" && res.result.trim()
+          ? res.result
+          : "The AI returned no explanation."
+      }]),
       onError: () => toast({ title: "ERROR", description: "Analysis failed.", variant: "destructive" })
     });
   };
@@ -63,12 +73,21 @@ export default function AI() {
     }
     setMessages(prev => [...prev, { role: "user", content: `Optimize the current ${currentLanguage} code.` }]);
     improveMutation.mutate({ data: { code: currentCode, language: currentLanguage } }, {
-      onSuccess: (res) => setMessages(prev => [...prev, { role: "assistant", content: res.explanation + "\n\n```" + currentLanguage + "\n" + res.improvedCode + "\n```" }]),
+      onSuccess: (res) => {
+        const improvedCode = typeof res.result === "string" ? res.result.trim() : "";
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: improvedCode
+            ? `Optimized code:\n\n\`\`\`${currentLanguage}\n${improvedCode}\n\`\`\``
+            : "The AI returned no optimized code."
+        }]);
+      },
       onError: () => toast({ title: "ERROR", description: "Optimization failed.", variant: "destructive" })
     });
   };
 
-  const renderMarkdown = (text: string) => {
+  const renderMarkdown = (value: unknown) => {
+    const text = typeof value === "string" ? value : "Response unavailable.";
     const parts = text.split(/(```[\s\S]*?```)/g);
     return parts.map((part, i) => {
       if (part.startsWith('```') && part.endsWith('```')) {

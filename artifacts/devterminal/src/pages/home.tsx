@@ -239,7 +239,11 @@ export default function Home() {
     setAiPanelContent("Analyzing...");
     setIsAiPanelOpen(true);
     explainMutation.mutate({ data: { code, language: languageId } }, {
-      onSuccess: (res) => setAiPanelContent(res.explanation || ""),
+      onSuccess: (res) => setAiPanelContent(
+        typeof res.result === "string" && res.result.trim()
+          ? res.result
+          : "The AI returned no explanation."
+      ),
       onError: () => setAiPanelContent("Failed to generate analysis.")
     });
   };
@@ -251,8 +255,13 @@ export default function Home() {
     setIsAiPanelOpen(true);
     improveMutation.mutate({ data: { code, language: languageId } }, {
       onSuccess: (res) => {
-        setAiPanelContent(res.explanation || "");
-        if (res.improvedCode) setCode(res.improvedCode);
+        const improvedCode = typeof res.result === "string" ? res.result.trim() : "";
+        if (improvedCode) {
+          setCode(improvedCode);
+          setAiPanelContent(`Optimized code applied to the editor:\n\n\`\`\`${languageId}\n${improvedCode}\n\`\`\``);
+        } else {
+          setAiPanelContent("The AI returned no optimized code.");
+        }
       },
       onError: () => setAiPanelContent("Optimization failed.")
     });
