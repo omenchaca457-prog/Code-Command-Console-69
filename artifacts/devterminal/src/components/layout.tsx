@@ -4,6 +4,7 @@ import { useHealthCheck } from "@workspace/api-client-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  const activeLocation = location === "/" ? "/" : location.replace(/\/+$/, "");
   const { data: health } = useHealthCheck();
 
   const navItems = [
@@ -40,7 +41,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
           <nav className="flex items-center gap-0 text-[10px] font-mono font-semibold tracking-wider uppercase">
             {navItems.map(({ href, label, icon: Icon, color }) => {
-              const isActive = location === href;
+              const isActive = activeLocation === href;
               return (
                 <Link
                   key={href}
@@ -93,7 +94,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1 overflow-hidden">
+      <main className="relative flex-1 overflow-hidden">
         {children}
       </main>
     </div>
