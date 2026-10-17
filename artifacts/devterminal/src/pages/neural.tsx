@@ -53,6 +53,19 @@ const SPAWN_CONCEPTS = [
 
 function randBetween(a: number, b: number) { return a + Math.random() * (b - a); }
 
+function colorWithAlpha(color: string, opacity: number) {
+  const hex = color.replace(/^#/, "");
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return color;
+
+  const safeOpacity = Number.isFinite(opacity)
+    ? Math.max(0, Math.min(1, opacity))
+    : 0;
+  const alpha = Math.round(safeOpacity * 255)
+    .toString(16)
+    .padStart(2, "0");
+  return `#${hex}${alpha}`;
+}
+
 function makeNode(label: string, color: string, radius: number, mass: number, W: number, H: number, born: number): NNode {
   const angle = Math.random() * Math.PI * 2;
   const dist = randBetween(60, Math.min(W, H) * 0.38);
@@ -251,8 +264,8 @@ export default function Neural() {
           if (!target) continue;
           const alpha = 0.15 + node.pulse * 0.15;
           const gradient = ctx.createLinearGradient(node.x, node.y, target.x, target.y);
-          gradient.addColorStop(0, node.color + Math.floor(alpha * 255).toString(16).padStart(2, "0"));
-          gradient.addColorStop(1, target.color + Math.floor(alpha * 255).toString(16).padStart(2, "0"));
+          gradient.addColorStop(0, colorWithAlpha(node.color, alpha));
+          gradient.addColorStop(1, colorWithAlpha(target.color, alpha));
           ctx.strokeStyle = gradient;
           ctx.lineWidth = 0.8;
           ctx.beginPath();
