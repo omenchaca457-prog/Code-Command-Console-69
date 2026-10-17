@@ -4,6 +4,7 @@ import executeRouter from "./execute";
 import snippetsRouter from "./snippets";
 import aiRouter from "./ai";
 import autorunRouter from "./autorun";
+import deepseekRouter from "./deepseek";
 
 const router: IRouter = Router();
 
@@ -11,6 +12,7 @@ router.use(healthRouter);
 router.use(executeRouter);
 router.use(snippetsRouter);
 router.use(aiRouter);
+router.use(deepseekRouter);
 router.use(autorunRouter);
 
 export default router;

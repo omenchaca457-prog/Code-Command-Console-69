@@ -89,6 +89,19 @@ export interface AiChatResponse {
   conversationId: number;
 }
 
+export interface DeepSeekChatInput {
+  /**
+   * @minLength 1
+   * @maxLength 8000
+   */
+  prompt: string;
+  /**
+   * @maxLength 30000
+   * @nullable
+   */
+  context?: string | null;
+}
+
 export interface AiExplainRequest {
   code: string;
   language: string;

@@ -105,7 +105,7 @@ export default function Agents() {
   const autoEvolveRef = useRef(false);
   const { currentCode, currentLanguage } = useAppContext();
   const { toast } = useToast();
-  const evolveTimerRef = useRef<ReturnType<typeof setInterval>>();
+  const evolveTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   const totalCoherence = agents.reduce((s, a) => s + a.coherence, 0) / Math.max(1, agents.length);
 

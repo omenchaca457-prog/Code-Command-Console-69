@@ -14,6 +14,7 @@ export * from "./aiImproveRequest";
 export * from "./aiMessage";
 export * from "./aiMessageRole";
 export * from "./createSnippetBody";
+export * from "./deepSeekChatInput";
 export * from "./executeRequest";
 export * from "./executeRequestLanguage";
 export * from "./executeResult";

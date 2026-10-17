@@ -23,6 +23,7 @@ import type {
   AiExplainRequest,
   AiImproveRequest,
   CreateSnippetBody,
+  DeepSeekChatInput,
   ExecuteRequest,
   ExecuteResult,
   HealthStatus,
@@ -596,6 +597,92 @@ export const useAiChat = <
   TContext
 > => {
   return useMutation(getAiChatMutationOptions(options));
+};
+
+/**
+ * @summary Consultar DeepSeek con respuesta en streaming SSE
+ */
+export const getDeepseekChatUrl = () => {
+  return `/api/deepseek/chat`;
+};
+
+export const deepseekChat = async (
+  deepSeekChatInput: DeepSeekChatInput,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getDeepseekChatUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(deepSeekChatInput),
+  });
+};
+
+export const getDeepseekChatMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deepseekChat>>,
+    TError,
+    { data: BodyType<DeepSeekChatInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deepseekChat>>,
+  TError,
+  { data: BodyType<DeepSeekChatInput> },
+  TContext
+> => {
+  const mutationKey = ["deepseekChat"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deepseekChat>>,
+    { data: BodyType<DeepSeekChatInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return deepseekChat(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeepseekChatMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deepseekChat>>
+>;
+export type DeepseekChatMutationBody = BodyType<DeepSeekChatInput>;
+export type DeepseekChatMutationError = ErrorType<void>;
+
+/**
+ * @summary Consultar DeepSeek con respuesta en streaming SSE
+ */
+export const useDeepseekChat = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deepseekChat>>,
+    TError,
+    { data: BodyType<DeepSeekChatInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deepseekChat>>,
+  TError,
+  { data: BodyType<DeepSeekChatInput> },
+  TContext
+> => {
+  return useMutation(getDeepseekChatMutationOptions(options));
 };
 
 /**

@@ -98,6 +98,18 @@ export const AiChatResponse = zod.object({
 });
 
 /**
+ * @summary Consultar DeepSeek con respuesta en streaming SSE
+ */
+export const deepseekChatBodyPromptMax = 8000;
+
+export const deepseekChatBodyContextMax = 30000;
+
+export const DeepseekChatBody = zod.object({
+  prompt: zod.string().min(1).max(deepseekChatBodyPromptMax),
+  context: zod.string().max(deepseekChatBodyContextMax).nullish(),
+});
+
+/**
  * @summary Explain code using AI
  */
 export const AiExplainBody = zod.object({
