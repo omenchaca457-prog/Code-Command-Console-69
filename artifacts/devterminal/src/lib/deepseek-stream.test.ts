@@ -56,6 +56,26 @@ test("surfaces provider error frames to the terminal caller", async () => {
   );
 });
 
+test("keeps partial output available when a provider error follows it", async () => {
+  const message = "No se pudo completar la consulta a DeepSeek.";
+  const body = readableChunks([
+    new TextEncoder().encode(
+      `data: ${JSON.stringify({ delta: "Respuesta parcial" })}\n\n` +
+        `data: ${JSON.stringify({ error: message })}\n\n`,
+    ),
+  ]);
+  const visibleDeltas: string[] = [];
+
+  await assert.rejects(
+    consumeDeepseekStream(body, new AbortController().signal, async (delta) => {
+      visibleDeltas.push(delta);
+    }),
+    { message },
+  );
+
+  assert.deepEqual(visibleDeltas, ["Respuesta parcial"]);
+});
+
 test("cancels an in-progress response reader when the user aborts", async () => {
   let readerCancelled = false;
   const body = new ReadableStream<Uint8Array>({

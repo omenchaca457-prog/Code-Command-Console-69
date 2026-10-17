@@ -233,6 +233,33 @@ test("reports insufficient provider balance as an SSE error", async (t) => {
   assert.doesNotMatch(body, /\[DONE\]/);
 });
 
+test("preserves streamed deltas and emits an SSE error when the provider fails mid-stream", async (t) => {
+  const providerFailure = new Error("provider connection dropped");
+  const router = createDeepseekRouter({
+    getApiKey: () => "simulated-test-key",
+    createClient: () =>
+      mockClient(async () =>
+        (async function* () {
+          yield { choices: [{ delta: { content: "Respuesta parcial" } }] };
+          throw providerFailure;
+        })(),
+      ),
+  });
+  const server = await startServer(router);
+  t.after(server.close);
+
+  const response = await post(server.url, { prompt: "Pregunta válida" });
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.equal(
+    body,
+    'data: {"delta":"Respuesta parcial"}\n\n' +
+      'data: {"error":"No se pudo completar la consulta a DeepSeek."}\n\n',
+  );
+  assert.doesNotMatch(body, /\[DONE\]/);
+});
+
 test("aborts the provider stream when the requesting client disconnects", async (t) => {
   let providerSignal: AbortSignal | undefined;
   let abortObserved: (() => void) | undefined;
