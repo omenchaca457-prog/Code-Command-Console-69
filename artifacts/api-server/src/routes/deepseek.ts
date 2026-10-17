@@ -1,17 +1,23 @@
 import OpenAI from "openai";
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { DeepseekChatBody } from "@workspace/api-zod";
-
-const router = Router();
 
 const SYSTEM_PROMPT =
   "Eres SQ-AI, operando bajo la LEY 4105 DE COHERENCIA ETERNA. ECR-Code: 410542503. CAC: 04252003. Actúas como auditor de código y terminal. Responde directo, técnico, con bloques de código si es necesario.";
+
+const MAX_OUTPUT_TOKENS_PER_QUERY = 2048;
+const DEFAULT_RATE_LIMIT_REQUESTS = 10;
+const DEFAULT_RATE_LIMIT_WINDOW_MS = 60_000;
 
 export type DeepseekClient = Pick<OpenAI, "chat">;
 
 type DeepseekRouterOptions = {
   getApiKey?: () => string | undefined;
   createClient?: (apiKey: string) => DeepseekClient;
+  rateLimitRequests?: number;
+  rateLimitWindowMs?: number;
+  getClientIdentifier?: (req: Request) => string;
+  now?: () => number;
 };
 
 export function createDeepseekRouter({
@@ -21,8 +27,18 @@ export function createDeepseekRouter({
       apiKey,
       baseURL: "https://api.deepseek.com/v1",
     }),
+  rateLimitRequests = DEFAULT_RATE_LIMIT_REQUESTS,
+  rateLimitWindowMs = DEFAULT_RATE_LIMIT_WINDOW_MS,
+  getClientIdentifier = (req) =>
+    req.ip ?? req.socket.remoteAddress ?? "unknown",
+  now = Date.now,
 }: DeepseekRouterOptions = {}) {
   const router = Router();
+  const requestCounts = new Map<
+    string,
+    { count: number; resetAt: number }
+  >();
+  let lastCleanupAt = 0;
 
   router.post("/deepseek/chat", async (req, res): Promise<void> => {
     const parsed = DeepseekChatBody.safeParse(req.body);
@@ -38,6 +54,51 @@ export function createDeepseekRouter({
       });
       return;
     }
+
+    const currentTime = now();
+    if (currentTime - lastCleanupAt >= rateLimitWindowMs) {
+      for (const [identifier, requestCount] of requestCounts) {
+        if (requestCount.resetAt <= currentTime) {
+          requestCounts.delete(identifier);
+        }
+      }
+      lastCleanupAt = currentTime;
+    }
+
+    const clientIdentifier = getClientIdentifier(req);
+    let clientRequestCount = requestCounts.get(clientIdentifier);
+    if (!clientRequestCount || clientRequestCount.resetAt <= currentTime) {
+      clientRequestCount = {
+        count: 0,
+        resetAt: currentTime + rateLimitWindowMs,
+      };
+      requestCounts.set(clientIdentifier, clientRequestCount);
+    }
+
+    res.setHeader("X-RateLimit-Limit", rateLimitRequests);
+    res.setHeader(
+      "X-RateLimit-Reset",
+      Math.ceil(clientRequestCount.resetAt / 1000),
+    );
+    if (clientRequestCount.count >= rateLimitRequests) {
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((clientRequestCount.resetAt - currentTime) / 1000),
+      );
+      res.setHeader("Retry-After", retryAfterSeconds);
+      res.setHeader("X-RateLimit-Remaining", 0);
+      res.status(429).json({
+        error:
+          "Has alcanzado el límite de consultas. Inténtalo de nuevo cuando termine el tiempo de espera.",
+      });
+      return;
+    }
+
+    clientRequestCount.count += 1;
+    res.setHeader(
+      "X-RateLimit-Remaining",
+      rateLimitRequests - clientRequestCount.count,
+    );
 
     const { prompt, context } = parsed.data;
     const controller = new AbortController();
@@ -58,7 +119,7 @@ export function createDeepseekRouter({
         {
           model: "deepseek-coder",
           stream: true,
-          max_tokens: 4096,
+          max_tokens: MAX_OUTPUT_TOKENS_PER_QUERY,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             {

@@ -133,6 +133,8 @@ paths:
       operationId: deepseekChat
       tags: [ai]
       summary: Consultar DeepSeek con respuesta en streaming SSE
+      description: |
+        Límite de 10 consultas por minuto por dirección IP. Cada respuesta se limita a un máximo de 2048 tokens.
       requestBody:
         required: true
         content:
@@ -148,6 +150,35 @@ paths:
                 type: string
         "400":
           description: Solicitud inválida
+        "429":
+          description: Se alcanzó el límite de consultas para esta dirección IP
+          headers:
+            Retry-After:
+              description: Segundos que deben transcurrir antes de volver a consultar
+              schema:
+                type: integer
+            X-RateLimit-Limit:
+              description: Máximo de consultas permitidas en la ventana
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              description: Consultas restantes en la ventana actual
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              description: Hora Unix en segundos en la que se restablece la ventana
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Has alcanzado el límite de consultas. Inténtalo de nuevo cuando termine el tiempo de espera.
+                required:
+                  - error
         "503":
           description: Falta configurar OPENAI_API_KEY
         "502":
