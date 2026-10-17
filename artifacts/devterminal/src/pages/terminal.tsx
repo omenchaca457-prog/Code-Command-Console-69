@@ -6,6 +6,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
 import { TerminalSquare, Wifi, WifiOff, RotateCcw, Maximize2, Minimize2, Search, X } from "lucide-react";
 import { useAppContext } from "@/lib/app-context";
+import { consumeDeepseekStream } from "@/lib/deepseek-stream";
 
 const BASE_HOST = window.location.host;
 const WS_PROTOCOL = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -232,39 +233,9 @@ export default function TerminalPage() {
       }
       if (!response.body) throw new Error("El servidor no devolvió un flujo de respuesta.");
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      const processFrame = async (frame: string) => {
-        const data = frame
-          .split(/\r?\n/)
-          .filter((line) => line.startsWith("data:"))
-          .map((line) => line.slice(5).trimStart())
-          .join("\n");
-        if (!data || data === "[DONE]") return;
-
-        const payload = JSON.parse(data) as { delta?: string; error?: string };
-        if (payload.error) throw new Error(payload.error);
-        if (typeof payload.delta === "string") {
-          await typeResponse(term, payload.delta, controller.signal);
-        }
-      };
-
-      while (!controller.signal.aborted) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const frames = buffer.split(/\r?\n\r?\n/);
-        buffer = frames.pop() ?? "";
-        for (const frame of frames) {
-          await processFrame(frame);
-          if (controller.signal.aborted) break;
-        }
-      }
-
-      buffer += decoder.decode();
-      if (buffer.trim()) await processFrame(buffer);
+      await consumeDeepseekStream(response.body, controller.signal, (delta) =>
+        typeResponse(term, delta, controller.signal),
+      );
       if (!controller.signal.aborted) writeSafeText(term, "\n\n");
     } catch (error) {
       if (controller.signal.aborted) {
