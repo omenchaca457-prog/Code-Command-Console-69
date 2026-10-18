@@ -105,48 +105,53 @@ export default function Neural() {
   const [aiResponse, setAiResponse] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const { currentCode, currentLanguage } = useAppContext();
-  const { events } = useNeuralContext();
+  const { events, streamStatus } = useNeuralContext();
   const chatMutation = useAiChat();
+  const lastAgentEventIdRef = useRef(0);
+  const hasSeenInitialEventsRef = useRef(false);
   const recentEventCount = useMemo(() => {
     const cutoff = Date.now() - 5 * 60_000;
     return events.filter((event) => Date.parse(event.createdAt) >= cutoff).length;
   }, [events]);
 
-  useEffect(() => {
-    let disposed = false;
-    const controller = new AbortController();
-    const loadTelemetry = async () => {
-      try {
-        const response = await fetch("/api/agents", { signal: controller.signal });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const records = await response.json() as Array<{
-          omega: number | null;
-          status: string;
-        }>;
-        if (disposed) return;
-        const measured = records.map((agent) => agent.omega)
-          .filter((omega): omega is number => typeof omega === "number" && Number.isFinite(omega));
-        setTelemetry({
-          omega: measured.length ? measured.reduce((sum, omega) => sum + omega, 0) / measured.length : null,
-          activeAgents: records.filter((agent) => agent.status === "active").length,
-          standbyAgents: records.filter((agent) => agent.status === "standby").length,
-          failedAgents: records.filter((agent) => agent.status === "failed").length,
-          loading: false,
-        });
-      } catch {
-        if (!disposed && !controller.signal.aborted) {
-          setTelemetry((current) => ({ ...current, loading: false }));
-        }
-      }
-    };
-    void loadTelemetry();
-    const timer = window.setInterval(() => void loadTelemetry(), 30_000);
-    return () => {
-      disposed = true;
-      controller.abort();
-      window.clearInterval(timer);
-    };
+  const refreshAgentTelemetry = useCallback(async () => {
+    try {
+      const response = await fetch("/api/agents");
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const records = await response.json() as Array<{ omega: number | null; status: string }>;
+      const measured = records.map((agent) => agent.omega)
+        .filter((omega): omega is number => typeof omega === "number" && Number.isFinite(omega));
+      setTelemetry({
+        omega: measured.length ? measured.reduce((sum, omega) => sum + omega, 0) / measured.length : null,
+        activeAgents: records.filter((agent) => agent.status === "active").length,
+        standbyAgents: records.filter((agent) => agent.status === "standby").length,
+        failedAgents: records.filter((agent) => agent.status === "failed").length,
+        loading: false,
+      });
+    } catch {
+      setTelemetry((current) => ({ ...current, loading: false }));
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshAgentTelemetry();
+  }, [refreshAgentTelemetry]);
+
+  useEffect(() => {
+    const agentEvents = events.filter((event) => event.origin === "agents");
+    if (!hasSeenInitialEventsRef.current) {
+      hasSeenInitialEventsRef.current = true;
+      lastAgentEventIdRef.current = Math.max(0, ...agentEvents.map((event) => event.id));
+      return;
+    }
+    const latestNewEvent = agentEvents.reduce(
+      (latest, event) => event.id > lastAgentEventIdRef.current ? Math.max(latest, event.id) : latest,
+      lastAgentEventIdRef.current,
+    );
+    if (latestNewEvent <= lastAgentEventIdRef.current) return;
+    lastAgentEventIdRef.current = latestNewEvent;
+    void refreshAgentTelemetry();
+  }, [events, refreshAgentTelemetry]);
 
   const initNodes = useCallback((W: number, H: number) => {
     const now = Date.now();
@@ -484,6 +489,14 @@ export default function Neural() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <span className={`inline-flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-widest ${
+            streamStatus === "connected" ? "text-[#22c55e]/70" : "text-[#f59e0b]/70"
+          }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${
+              streamStatus === "connected" ? "bg-[#22c55e]" : "animate-pulse bg-[#f59e0b]"
+            }`} />
+            {streamStatus === "connected" ? "SSE EN VIVO" : streamStatus === "connecting" ? "CONECTANDO" : "RECONECTANDO"}
+          </span>
           <button
             onClick={evolve}
             className="flex items-center gap-1.5 px-3 py-1.5 font-mono text-[10px] tracking-widest uppercase text-[#00ffff]/60 border border-[#00ffff]/20 hover:border-[#00ffff]/60 hover:text-[#00ffff] hover:bg-[#00ffff]/5 transition-all"

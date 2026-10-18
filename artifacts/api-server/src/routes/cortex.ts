@@ -2,6 +2,7 @@ import { Router } from "express";
 import { pool } from "@workspace/db";
 import { executeDeepseekTool } from "./deepseek-tools";
 import { MAX_EDITOR_CODE, validateCortexInput } from "./cortex-context";
+import { publishNeuralEvent } from "./neural-event-bus";
 
 export function createCortexRouter() {
   const router = Router();
@@ -86,11 +87,28 @@ export function createCortexRouter() {
       gemini: typeof gemini === "string" ? gemini.slice(0, 1500) : "",
     });
     try {
-      await pool.query(
+      const { rows } = await pool.query<{
+        id: number;
+        origin: "terminal";
+        event_type: string;
+        content: string;
+        created_at: Date;
+      }>(
         `INSERT INTO neural_events (origin, event_type, content)
-         VALUES ('terminal', 'cortex_learning', $1)`,
+         VALUES ('terminal', 'cortex_learning', $1)
+         RETURNING id, origin, event_type, content, created_at`,
         [record],
       );
+      const savedEvent = rows[0];
+      if (savedEvent) {
+        publishNeuralEvent({
+          id: savedEvent.id,
+          origin: savedEvent.origin,
+          eventType: savedEvent.event_type,
+          content: savedEvent.content,
+          createdAt: savedEvent.created_at.toISOString(),
+        });
+      }
       res.status(201).json({ saved: true });
     } catch (error) {
       req.log.error({ err: error }, "No se pudo guardar la memoria de Cortex");

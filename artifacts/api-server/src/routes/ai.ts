@@ -13,6 +13,7 @@ import {
   parseOmega,
 } from "./agent-evaluation";
 import { AgentCircuitBreaker } from "./agent-circuit-breaker";
+import { publishNeuralEvent } from "./neural-event-bus";
 
 const router = Router();
 const agentCircuitBreaker = new AgentCircuitBreaker();
@@ -204,11 +205,20 @@ Be direct, concise, and technically precise. Format code blocks with language ta
         lastOmega: null,
         updatedAt: new Date(),
       }).where(eq(agentsTable.id, agentId));
-      await db.insert(neuralEventsTable).values({
+      const [event] = await db.insert(neuralEventsTable).values({
         origin: "agents",
         eventType: breaker.remainingMs > 0 ? "cortex_recovery" : "agent_failed",
         content: `agent=${agentId}; consecutive_failures=${breaker.consecutiveFailures}; ${failure}`,
-      });
+      }).returning();
+      if (event) {
+        publishNeuralEvent({
+          id: event.id,
+          origin: "agents",
+          eventType: event.eventType,
+          content: event.content,
+          createdAt: event.createdAt.toISOString(),
+        });
+      }
       res.status(controller?.signal.aborted ? 504 : 502).json({
         error: failure,
         status: breaker.remainingMs > 0 ? "standby" : "failed",
