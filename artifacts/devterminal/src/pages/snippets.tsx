@@ -9,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function Snippets() {
   const [, setLocation] = useLocation();
-  const { data: snippets, isLoading } = useListSnippets();
+  const { data: snippets, isLoading, isError } = useListSnippets();
   const deleteSnippetMutation = useDeleteSnippet();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -33,7 +33,7 @@ export default function Snippets() {
     });
   };
 
-  const openSnippet = (id: number) => setLocation(`/?snippetId=${id}`);
+  const openSnippet = (id: number) => setLocation(`/runner?snippetId=${id}`);
 
   return (
     <div className="flex flex-col h-full bg-[#070707]">
@@ -66,6 +66,13 @@ export default function Snippets() {
               <div key={i} className="h-36 bg-[#0a0a0a] border border-[#111] animate-pulse" />
             ))}
           </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center h-64 text-center border border-dashed border-[#ff003c]/20">
+            <Terminal className="h-8 w-8 text-[#ff003c]/50 mb-4" />
+            <p className="text-[10px] font-mono text-[#ff6060] tracking-widest uppercase">
+              No se pudo consultar la Library. Intenta recargar la página.
+            </p>
+          </div>
         ) : filteredSnippets.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-center border border-dashed border-[#1a1a1a]">
             <Terminal className="h-8 w-8 text-[#222] mb-4" />
@@ -87,7 +94,15 @@ export default function Snippets() {
               <div
                 key={snippet.id}
                 className="group flex flex-col border border-[#111] bg-[#060606] hover:border-[#ff003c]/25 transition-all cursor-pointer"
-                onClick={() => openSnippet(snippet.id)}
+               onClick={() => openSnippet(snippet.id)}
+               role="button"
+               tabIndex={0}
+               onKeyDown={event => {
+                 if (event.key === "Enter" || event.key === " ") {
+                   event.preventDefault();
+                   openSnippet(snippet.id);
+                 }
+               }}
               >
                 {/* Card header */}
                 <div className="flex items-center justify-between px-3 py-2 border-b border-[#0f0f0f] bg-[#040404]">
@@ -127,7 +142,7 @@ export default function Snippets() {
                       className="px-2 py-0.5 font-mono text-[9px] tracking-widest uppercase text-[#ff003c]/60 border border-[#ff003c]/20 hover:bg-[#ff003c]/10 hover:text-[#ff003c] transition-all"
                       onClick={(e) => { e.stopPropagation(); openSnippet(snippet.id); }}
                     >
-                      OPEN
+                      CARGAR EN RUNNER
                     </button>
                   </div>
                 </div>

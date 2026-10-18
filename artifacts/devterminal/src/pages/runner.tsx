@@ -1,7 +1,16 @@
-import { useState, useRef, useCallback, useId } from "react";
-import { Play, Square, Trash2, Plus, Download, RefreshCw } from "lucide-react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { Play, Square, Trash2, Plus, Download, CloudUpload } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
+import {
+  useCreateSnippet,
+  useGetSnippet,
+  getGetSnippetQueryKey,
+  getListSnippetsQueryKey,
+  getGetRecentSnippetsQueryKey,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
@@ -57,11 +66,73 @@ export default function Runner() {
   ]);
   const [showLangPicker, setShowLangPicker] = useState(false);
   const abortRefs = useRef<Record<string, AbortController>>({});
+  const loadedSnippetIdRef = useRef<string | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const createSnippetMutation = useCreateSnippet();
+  const [, setLocation] = useLocation();
+  const snippetId = new URLSearchParams(window.location.search).get("snippetId");
+  const parsedSnippetId = snippetId ? Number(snippetId) : NaN;
+  const { data: loadedSnippet, isSuccess: snippetLoaded, isError: snippetLoadFailed } = useGetSnippet(parsedSnippetId, {
+    query: {
+      enabled: Number.isInteger(parsedSnippetId) && parsedSnippetId > 0,
+      queryKey: getGetSnippetQueryKey(parsedSnippetId),
+    },
+  });
+  const [savingPanelIds, setSavingPanelIds] = useState<Set<string>>(() => new Set());
 
   const updatePanel = useCallback((id: string, patch: Partial<Panel>) => {
     setPanels(ps => ps.map(p => p.id === id ? { ...p, ...patch } : p));
   }, []);
+
+  useEffect(() => {
+    if (!snippetId || loadedSnippetIdRef.current === snippetId) return;
+    if (snippetLoadFailed) {
+      loadedSnippetIdRef.current = snippetId;
+      toast({ title: "No se encontró el snippet", variant: "destructive" });
+      setLocation("/runner");
+      return;
+    }
+    if (!snippetLoaded || !loadedSnippet) return;
+    const lang = LANGS.find(item => item.id === loadedSnippet.language);
+    if (!lang) {
+      toast({ title: "No se pudo cargar", description: "El lenguaje de este snippet no está disponible en Runner.", variant: "destructive" });
+    } else {
+      setPanels(current => [{ ...makePanel(lang), code: loadedSnippet.code }, ...current]);
+      toast({ title: "Snippet cargado en Runner", description: loadedSnippet.title });
+    }
+    loadedSnippetIdRef.current = snippetId;
+    setLocation("/runner");
+  }, [snippetId, snippetLoaded, snippetLoadFailed, loadedSnippet, setLocation, toast]);
+
+  useEffect(() => {
+    if (!snippetId) loadedSnippetIdRef.current = null;
+  }, [snippetId]);
+
+  const savePanel = useCallback((panel: Panel) => {
+    if (!panel.code.trim()) {
+      toast({ title: "No se pudo guardar", description: "El panel no contiene código.", variant: "destructive" });
+      return;
+    }
+    const title = `Runner_${panel.lang.name.replace(/[^a-z0-9]+/gi, "_")}_${new Date().getFullYear()}_${Date.now()}`;
+    setSavingPanelIds(current => new Set(current).add(panel.id));
+    createSnippetMutation.mutate(
+      { data: { title, code: panel.code, language: panel.lang.id } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListSnippetsQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetRecentSnippetsQueryKey() });
+          toast({ title: "Snippet guardado en Library", description: title });
+        },
+        onError: () => toast({ title: "No se pudo guardar el snippet", variant: "destructive" }),
+        onSettled: () => setSavingPanelIds(current => {
+          const next = new Set(current);
+          next.delete(panel.id);
+          return next;
+        }),
+      },
+    );
+  }, [createSnippetMutation, queryClient, toast]);
 
   const runPanel = useCallback(async (panel: Panel) => {
     const ctrl = new AbortController();
@@ -171,6 +242,8 @@ export default function Runner() {
               key={panel.id}
               panel={panel}
               onRun={() => runPanel(panel)}
+              onSave={() => savePanel(panel)}
+              isSaving={savingPanelIds.has(panel.id)}
               onStop={() => stopPanel(panel.id)}
               onRemove={() => setPanels(ps => ps.filter(p => p.id !== panel.id))}
               onCodeChange={code => updatePanel(panel.id, { code })}
@@ -203,10 +276,12 @@ export default function Runner() {
 }
 
 function PanelCard({
-  panel, onRun, onStop, onRemove, onCodeChange, onLangChange, onInstall
+  panel, onRun, onSave, isSaving, onStop, onRemove, onCodeChange, onLangChange, onInstall
 }: {
   panel: Panel;
   onRun: () => void;
+  onSave: () => void;
+  isSaving: boolean;
   onStop: () => void;
   onRemove: () => void;
   onCodeChange: (c: string) => void;
@@ -286,6 +361,16 @@ function PanelCard({
               <Play className="h-2.5 w-2.5 fill-current" /> RUN
             </button>
           )}
+          <button
+            onClick={e => { e.stopPropagation(); onSave(); }}
+            disabled={isSaving}
+            className="flex items-center gap-1 px-2 py-0.5 font-mono text-[9px] tracking-wider uppercase transition-all disabled:opacity-40"
+            style={{ color: "#00ff9c", border: "1px solid #00ff9c40", background: "#00ff9c08" }}
+            title="Guardar snippet en Library"
+            aria-label={`Guardar código ${lang.name} en Library`}
+          >
+            <CloudUpload className="h-2.5 w-2.5" /> {isSaving ? "SAVING" : "SAVE"}
+          </button>
           <button
             onClick={e => { e.stopPropagation(); onRemove(); }}
             className="p-1 text-[#222] hover:text-[#ff003c]/60 transition-colors"
