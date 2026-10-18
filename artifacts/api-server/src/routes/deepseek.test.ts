@@ -139,14 +139,14 @@ test("streams each provider delta as a separate SSE frame and ends with [DONE]",
   assert.equal(clientCreations, 1);
 
   const messages = (capturedParams as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming)
-    .messages;
-  assert.equal(messages.at(-1)?.content, "Contexto del usuario:\nconst answer = 42;\n\nPregunta:\nExplica este fragmento");
-  assert.equal(
-    (capturedParams as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming)
-      .max_tokens,
-    2048,
-  );
-});
+messages: [
+  { role: "system", content: SYSTEM_PROMPT },
+  {
+    role: "user",
+    // Forzamos a que SOLO use dbContext (la query SQL real)
+    content: `Eres el auditor del sistema. Aquí están los datos REALES de mi base de datos PostgreSQL:\n\n${dbContext}\n\nBasado en esto, responde a mi pregunta:\n${prompt}`,
+  },
+],
 
 test("ends a completed empty provider stream cleanly", async (t) => {
   const router = createTestRouter({

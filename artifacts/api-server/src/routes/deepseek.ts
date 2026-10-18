@@ -1,3 +1,4 @@
+import { Pool } from "pg";
 import OpenAI from "openai";
 import { Router, type Request } from "express";
 import { DeepseekChatBody } from "@workspace/api-zod";
@@ -90,10 +91,19 @@ export function createDeepseekRouter({
     );
 
     const { prompt, context } = parsed.data;
-    const controller = new AbortController();
-    res.on("close", () => {
-      if (!res.writableEnded) controller.abort();
-    });
+
+    // 🔱 CONEXIÓN A LA BASE DE DATOS (LEY 4105)
+    let dbContext = "";
+    try {
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      // Hacemos la query (puedes cambiar 'conversations' por 'projects' o 'snippets')
+      const dbResult = await pool.query("SELECT title, created_at FROM conversations ORDER BY created_at DESC LIMIT 5");
+      dbContext = JSON.stringify(dbResult.rows);
+      await pool.end();
+    } catch (dbError) {
+      req.log.error(dbError, "Error leyendo la DB");
+      dbContext = "Error al conectar con la base de datos.";
+    }
 
     res.status(200);
     res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
@@ -113,12 +123,13 @@ export function createDeepseekRouter({
             { role: "system", content: SYSTEM_PROMPT },
             {
               role: "user",
-              content: context
-                ? `Contexto del usuario:\n${context}\n\nPregunta:\n${prompt}`
-                : prompt,
+              // AQUÍ ESTÁ EL PARCHE CON LA BASE DE DATOS
+              content: `[CONTEXTO DE BASE DE DATOS - Últimos registros]:\n${dbContext}\n\n[CONTEXTO EXTRA]:\n${context || 'N/A'}\n\nPregunta del Arquitecto:\n${prompt}`,
             },
           ],
         },
+        { signal: controller.signal },
+      );
         { signal: controller.signal },
       );
 
