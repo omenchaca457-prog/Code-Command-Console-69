@@ -129,6 +129,16 @@ type DeepseekToolDependencies = {
   publishNeuralEvent: typeof publishNeuralEvent;
 };
 
+type WriteNotificationResult =
+  | { status: "delivered"; persisted: true }
+  | {
+      status: "failed";
+      stage: "persistence" | "realtime";
+      retry: "not_attempted";
+      recovery: string;
+      message: string;
+    };
+
 const defaultToolDependencies: DeepseekToolDependencies = {
   writeProjectCode,
   persistNeuralEvent: async (event) => {
@@ -177,24 +187,55 @@ export function createDeepseekToolExecutor(
     if (name === "write_project_file" || name === "write_file") {
       const result = await dependencies.writeProjectCode(args.path, args.content);
       const eventContent = `[AUTONOMOUS WRITE] Archivo actualizado -> Ejecutando en PTY... ${result.path}`;
-      const event = await dependencies.persistNeuralEvent({
-        origin: "terminal",
-        eventType: "autonomous_write",
-        content: eventContent,
-      });
-      if (event) {
-        await dependencies.publishNeuralEvent({
-          id: event.id,
-          origin: event.origin,
-          eventType: event.eventType,
-          content: event.content,
-          createdAt: event.createdAt.toISOString(),
+      let notification: WriteNotificationResult;
+      try {
+        const event = await dependencies.persistNeuralEvent({
+          origin: "terminal",
+          eventType: "autonomous_write",
+          content: eventContent,
         });
+        if (!event) {
+          notification = {
+            status: "failed",
+            stage: "persistence",
+            retry: "not_attempted",
+            recovery: "No se reintentó automáticamente porque no se puede descartar que el guardado se haya confirmado tarde.",
+            message: "El archivo se guardó, pero no se confirmó el aviso de actividad.",
+          };
+        } else {
+          try {
+            await dependencies.publishNeuralEvent({
+              id: event.id,
+              origin: event.origin,
+              eventType: event.eventType,
+              content: event.content,
+              createdAt: event.createdAt.toISOString(),
+            });
+            notification = { status: "delivered", persisted: true };
+          } catch {
+            notification = {
+              status: "failed",
+              stage: "realtime",
+              retry: "not_attempted",
+              recovery: "El evento quedó guardado y puede recuperarse cuando el flujo se reconecte.",
+              message: "El archivo y el aviso quedaron guardados, pero falló su difusión en tiempo real.",
+            };
+          }
+        }
+      } catch {
+        notification = {
+          status: "failed",
+          stage: "persistence",
+          retry: "not_attempted",
+          recovery: "No se reintentó automáticamente porque no se puede descartar que el guardado se haya confirmado tarde.",
+          message: "El archivo se guardó, pero falló el almacenamiento del aviso de actividad.",
+        };
       }
       return JSON.stringify({
         ...result,
         status: "written",
         runtime: "El archivo está guardado; los watchers del proyecto aplicarán el cambio.",
+        notification,
       });
     }
     if (name === "get_neural_activity") {

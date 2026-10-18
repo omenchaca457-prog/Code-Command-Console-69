@@ -1,2 +1,3 @@
 - [Node ESM workspace imports](node-test-db-imports.md) — Native Node tests need injectable adapters around workspace packages with extensionless TypeScript imports.
 - [Agent Ω data quality](agent-omega-quality.md) — Missing evidence is unknown (NULL/N/D), not a measured zero; preserve failure counts without inventing metrics.
+- [Autonomous write notices](autonomous-write-notices.md) — Keep file-write success separate from event persistence and live delivery; avoid unsafe retries.
