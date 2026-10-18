@@ -9,6 +9,8 @@ const SYSTEM_PROMPT =
   "Eres ORQUESTADOR-OPENAI. Lee el estado real de los agentes proporcionado desde PostgreSQL " +
   "y emite una orden final concreta, breve y accionable para coordinar el enjambre. " +
   "No inventes estados ni resultados.";
+const getConfiguredOpenAiKey = () =>
+  process.env.chatgpt || process.env.OPENAI_API_KEY || process.env.openIA;
 
 type AgentState = {
   id: string;
@@ -42,7 +44,7 @@ type OpenAiRouteDependencies = {
 };
 
 const defaultDependencies: OpenAiRouteDependencies = {
-  getApiKey: () => process.env.OPENAI_API_KEY || process.env.openIA,
+  getApiKey: getConfiguredOpenAiKey,
   loadAgentStates: async () => {
     const { agentsTable, db } = await import("@workspace/db");
     const { asc } = await import("drizzle-orm");
@@ -68,7 +70,7 @@ const defaultDependencies: OpenAiRouteDependencies = {
       .orderBy(asc(agentsTable.updatedAt));
   },
   streamCompletion: async function* ({ prompt, agents, agentResults }) {
-    const apiKey = process.env.OPENAI_API_KEY || process.env.openIA;
+    const apiKey = getConfiguredOpenAiKey();
     if (!apiKey) throw new Error("OPENAI_API_KEY is not configured");
     const client = new OpenAI({ apiKey });
     const stream = await client.chat.completions.create({
@@ -159,7 +161,7 @@ export function createOpenAiRouter(
     const agentResults = (rawAgentResults ?? []) as AgentResult[];
     if (!dependencies.getApiKey()) {
       res.status(503).json({
-        error: "OpenAI no está configurado. Añade OPENAI_API_KEY en Secrets (o usa openIA).",
+        error: "OpenAI no está configurado. Añade OPENAI_API_KEY o chatgpt en Secrets.",
       });
       return;
     }
