@@ -31,8 +31,8 @@ export class PostgresNeuralEventTransport {
   private stopping = true;
   private remoteNotifications = Promise.resolve();
   private recoveryPromise = Promise.resolve();
-  private lastProcessedEventId = 0;
-  private hasInitialCursor = false;
+  private replayCursor: number | null = null;
+  private readonly seenEventIds = new Set<number>();
 
   constructor(options: PostgresNeuralEventTransportOptions) {
     this.options = options;
@@ -45,12 +45,16 @@ export class PostgresNeuralEventTransport {
     try {
       await this.connectListener();
     } catch (error) {
-      logger.error({ err: error }, "No se pudo iniciar LISTEN para eventos neuronales; se reintentará");
+      logger.error(
+        { err: error },
+        "No se pudo iniciar LISTEN para eventos neuronales; se reintentará",
+      );
       this.scheduleReconnect();
     }
   }
 
   async publish(eventId: number): Promise<void> {
+    this.seenEventIds.add(eventId);
     await this.options.pool.query(
       "SELECT pg_notify($1, $2)",
       [CHANNEL, JSON.stringify({ source: this.instanceId, id: eventId })],
@@ -83,10 +87,10 @@ export class PostgresNeuralEventTransport {
   }
 
   private async connectListener(): Promise<void> {
-    if (!this.hasInitialCursor) {
-      this.lastProcessedEventId = await this.options.loadLatestEventId();
-      this.hasInitialCursor = true;
+    if (this.replayCursor === null) {
+      this.replayCursor = await this.options.loadLatestEventId();
     }
+
     const client = await this.options.pool.connect();
     try {
       await client.query(`LISTEN ${CHANNEL}`);
@@ -118,6 +122,7 @@ export class PostgresNeuralEventTransport {
     client.on("notification", this.handleNotification);
     client.on("error", this.listenerFailure);
     client.on("end", this.listenerFailure);
+
     this.recoveryPromise = this.replayMissedEvents();
     try {
       await this.recoveryPromise;
@@ -128,14 +133,19 @@ export class PostgresNeuralEventTransport {
   }
 
   private async replayMissedEvents(): Promise<void> {
-    const missed = await this.options.loadEventsSince(this.lastProcessedEventId);
-    for (const event of missed) this.deliverIfNew(event);
+    const cursor = this.replayCursor;
+    if (cursor === null) return;
+
+    const missed = await this.options.loadEventsSince(cursor);
+    for (const event of missed.sort((left, right) => left.id - right.id)) {
+      this.deliverOnce(event);
+    }
   }
 
-  private deliverIfNew(event: StreamedNeuralEvent): void {
-    if (event.id <= this.lastProcessedEventId) return;
+  private deliverOnce(event: StreamedNeuralEvent): void {
+    if (this.seenEventIds.has(event.id)) return;
+    this.seenEventIds.add(event.id);
     this.options.onEvent(event);
-    this.lastProcessedEventId = event.id;
   }
 
   private readonly handleNotification = (message: {
@@ -161,9 +171,9 @@ export class PostgresNeuralEventTransport {
           return;
         }
 
-        if (notification.id <= this.lastProcessedEventId) return;
-        const events = await this.options.loadEventsSince(this.lastProcessedEventId);
-        for (const event of events) this.deliverIfNew(event);
+        // Replay from the stable startup cursor so concurrent transactions with
+        // lower sequence IDs are still recovered; seenEventIds removes duplicates.
+        await this.replayMissedEvents();
       })
       .catch((error: unknown) => {
         logger.error({ err: error }, "No se pudo procesar un aviso de evento neuronal");
@@ -200,7 +210,11 @@ export async function loadLatestNeuralEventId(
   const { rows } = await pool.query<{ id: number | string | null }>(
     "SELECT MAX(id) AS id FROM neural_events",
   );
-  return Number(rows[0]?.id ?? 0);
+  const id = Number(rows[0]?.id ?? 0);
+  if (!Number.isSafeInteger(id) || id < 0) {
+    throw new Error("El ID máximo de eventos neuronales no es válido");
+  }
+  return id;
 }
 
 export async function loadNeuralEventsSince(
@@ -208,11 +222,11 @@ export async function loadNeuralEventsSince(
   eventId: number,
 ): Promise<StreamedNeuralEvent[]> {
   const { rows } = await pool.query<NeuralEventRow>(
-      `SELECT id, origin, event_type, content, created_at
-       FROM neural_events
-       WHERE id > $1
-       ORDER BY id ASC`,
-      [eventId],
+    `SELECT id, origin, event_type, content, created_at
+     FROM neural_events
+     WHERE id > $1
+     ORDER BY id ASC`,
+    [eventId],
   );
   return rows.map(mapNeuralEventRow);
 }
