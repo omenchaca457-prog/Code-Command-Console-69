@@ -3,9 +3,23 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import express from "express";
 import { describe, it } from "node:test";
-import { createOpenAiRouter } from "./openai.ts";
+import { createOpenAiRouter, getOpenAiFailureMessage } from "./openai.ts";
 
 describe("POST /openai/chat", () => {
+  it("shows a safe, actionable message when OpenAI rejects the key", () => {
+    const message = getOpenAiFailureMessage(
+      Object.assign(new Error("401 invalid_api_key secret-not-for-display"), {
+        status: 401,
+        code: "invalid_api_key",
+      }),
+    );
+    assert.equal(
+      message,
+      "OpenAI rechazó la credencial. Revoca la llave expuesta y actualiza el Secret chatgpt.",
+    );
+    assert.doesNotMatch(message, /secret-not-for-display/);
+  });
+
   it("streams the final decision and records the OpenAI-Master neural event", async () => {
     let stateRead = false;
     let recordedDecision = "";

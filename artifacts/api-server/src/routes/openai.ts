@@ -10,7 +10,7 @@ const SYSTEM_PROMPT =
   "y emite una orden final concreta, breve y accionable para coordinar el enjambre. " +
   "No inventes estados ni resultados.";
 const getConfiguredOpenAiKey = () =>
-  process.env.OPENAI_API_KEY || process.env.chatgpt || process.env.openIA;
+  process.env.chatgpt || process.env.OPENAI_API_KEY || process.env.openIA;
 
 type AgentState = {
   id: string;
@@ -31,6 +31,22 @@ type AgentResult = {
   response: string;
   error?: string;
 };
+
+export function getOpenAiFailureMessage(error: unknown): string {
+  const details = error && typeof error === "object"
+    ? error as { status?: unknown; code?: unknown }
+    : {};
+  if (details.status === 401 || details.code === "invalid_api_key") {
+    return "OpenAI rechazó la credencial. Revoca la llave expuesta y actualiza el Secret chatgpt.";
+  }
+  if (details.status === 403) {
+    return "La cuenta de OpenAI no tiene permiso para usar GPT-4o.";
+  }
+  if (details.status === 429) {
+    return "OpenAI alcanzó su límite de solicitudes. Inténtalo de nuevo más tarde.";
+  }
+  return "OpenAI no pudo completar la orden. Revisa la conexión del proveedor.";
+}
 
 type OpenAiRouteDependencies = {
   getApiKey: () => string | undefined;
@@ -204,13 +220,19 @@ export function createOpenAiRouter(
       })}\n\n`);
       res.end();
     } catch (error) {
-      req.log.error({ err: error }, "Falló el orquestador OpenAI");
+      const details = error && typeof error === "object"
+        ? error as { status?: unknown; code?: unknown }
+        : {};
+      req.log.error(
+        { status: details.status, code: details.code },
+        "Falló el orquestador OpenAI",
+      );
       if (res.headersSent && !res.destroyed && !res.writableEnded) {
         res.write(`data: ${JSON.stringify({
           type: "error",
           error: generationCompleted
             ? "La orden se generó, pero ocurrió un error al registrar el estado de OpenAI-Master."
-            : "OpenAI no pudo completar la orden.",
+            : getOpenAiFailureMessage(error),
         })}\n\n`);
         res.end();
       } else if (!res.headersSent) {
