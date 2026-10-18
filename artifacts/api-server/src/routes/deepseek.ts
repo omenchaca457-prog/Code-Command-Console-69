@@ -4,7 +4,7 @@ import { DeepseekChatBody } from "@workspace/api-zod";
 import { pool } from "@workspace/db";
 import {
   buildDeepseekMessages,
-  formatConversationContext,
+  formatMessageContext,
 } from "./deepseek-prompt";
 import { executeDeepseekTool } from "./deepseek-tools";
 
@@ -81,13 +81,16 @@ const handleDeepseekChat = async (
     let dbContext = "";
     try {
       const { rows } = await pool.query<{
-        id: number;
-        title: string;
-        created_at: Date;
-      }>(
-        "SELECT id, title, created_at FROM conversations ORDER BY created_at DESC, id DESC LIMIT 5",
-      );
-      dbContext = formatConversationContext(rows);
+        role: string;
+        content: string;
+        created_at: Date | string;
+      }>(`
+        SELECT role, content, created_at
+        FROM messages
+        WHERE conversation_id = (SELECT MAX(id) FROM conversations)
+        ORDER BY id ASC LIMIT 40;
+      `);
+      dbContext = formatMessageContext(rows);
     } catch (dbError) {
       req.log.error({ err: dbError }, "Error leyendo la DB");
       dbContext = "Error al conectar con la base de datos.";

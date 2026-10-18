@@ -4,8 +4,8 @@ import {
   validateDeepseekToolArguments,
   validateExecuteSqlQuery,
 } from "./deepseek-tool-safety";
+import { serializeSqlRows } from "./deepseek-serialization";
 const MAX_ROWS = 20;
-const MAX_CELL_CHARS = 4000;
 
 export async function executeSqlTool(query: string): Promise<string> {
   const safeQuery = validateExecuteSqlQuery(query);
@@ -13,14 +13,7 @@ export async function executeSqlTool(query: string): Promise<string> {
   try {
     await client.query("BEGIN READ ONLY");
     const result = await client.query(safeQuery);
-    const rows = result.rows.slice(0, MAX_ROWS).map((row) =>
-      Object.fromEntries(
-        Object.entries(row).map(([key, value]) => {
-          const serialized = typeof value === "string" ? value : JSON.stringify(value);
-          return [key, serialized?.slice(0, MAX_CELL_CHARS) ?? null];
-        }),
-      ),
-    );
+    const rows = serializeSqlRows(result.rows.slice(0, MAX_ROWS));
     return JSON.stringify({
       rowCount: result.rowCount,
       rows,
