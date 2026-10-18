@@ -9,6 +9,7 @@ import {
   emitMockDeepseekStream,
   type DeepseekMockScenario,
 } from "./deepseek-mock-stream.ts";
+import { getWriteNotificationSummary } from "./deepseek-tools.ts";
 
 const MAX_TOOL_ROUNDS = 10;
 const MAX_TOOL_CALLS = 10;
@@ -285,6 +286,7 @@ const handleDeepseekChat = async (
     ].join("\n\n");
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
       buildDeepseekMessages(prompt, systemContext, dbContext);
+    const notificationSummaries = new Set<string>();
     let toolCallsExecuted = 0;
     let completed = false;
 
@@ -351,7 +353,6 @@ const handleDeepseekChat = async (
           function: { name: call.name, arguments: call.arguments },
         }));
       if (calls.length === 0) {
-        res.write("data: [DONE]\n\n");
         completed = true;
         break;
       }
@@ -382,15 +383,25 @@ const handleDeepseekChat = async (
           call.function.name,
           call.function.arguments,
         );
+        const notificationSummary = getWriteNotificationSummary(result);
+        if (notificationSummary) notificationSummaries.add(notificationSummary);
         messages.push({ role: "tool", tool_call_id: call.id, content: result });
       }
       if (completed) break;
     }
 
+    if (!controller.signal.aborted && !res.destroyed) {
+      for (const summary of notificationSummaries) {
+        res.write(`data: ${JSON.stringify({ delta: `\n\n${summary}` })}\n\n`);
+      }
+    }
     if (!completed && !controller.signal.aborted && !res.destroyed) {
       res.write(
         `data: ${JSON.stringify({ error: "No se pudo completar el ciclo de herramientas." })}\n\n`,
       );
+    }
+    if (!controller.signal.aborted && !res.destroyed) {
+      res.write("data: [DONE]\n\n");
     }
   } catch (error) {
     if (!controller.signal.aborted && !res.destroyed) {

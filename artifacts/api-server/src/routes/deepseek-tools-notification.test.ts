@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { describe, it } from "node:test";
 import { resolve } from "node:path";
-import { createDeepseekToolExecutor } from "./deepseek-tools.ts";
+import {
+  createDeepseekToolExecutor,
+  getWriteNotificationSummary,
+} from "./deepseek-tools.ts";
 
 const toolPath = "artifacts/api-server/src/routes/notification-fixture.ts";
 
@@ -20,6 +23,31 @@ function writeToolArguments(content: string) {
 }
 
 describe("DeepSeek autonomous write notification failures", () => {
+  it("formats the actual notification failure for the user, not a generic write failure", () => {
+    assert.equal(
+      getWriteNotificationSummary(JSON.stringify({
+        status: "written",
+        path: toolPath,
+        notification: {
+          status: "failed",
+          stage: "realtime",
+          message: "El archivo y el aviso quedaron guardados, pero falló su difusión en tiempo real.",
+          recovery: "El evento quedó guardado y puede recuperarse cuando el flujo se reconecte.",
+        },
+      })),
+      "[AVISO DE ACTIVIDAD] El archivo y el aviso quedaron guardados, pero falló su difusión en tiempo real. El evento quedó guardado y puede recuperarse cuando el flujo se reconecte.",
+    );
+    assert.equal(
+      getWriteNotificationSummary(JSON.stringify({
+        status: "written",
+        path: toolPath,
+        notification: { status: "delivered", persisted: true },
+      })),
+      null,
+    );
+    assert.equal(getWriteNotificationSummary("not-json"), null);
+  });
+
   it("reports the applied write and does not retry when event persistence fails", async () => {
     await withFixture(async (target) => {
       let persistenceCalls = 0;

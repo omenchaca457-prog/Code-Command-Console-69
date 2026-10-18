@@ -265,4 +265,27 @@ export function createDeepseekToolExecutor(
   };
 }
 
+export function getWriteNotificationSummary(toolResult: string): string | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(toolResult);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object") return null;
+  const result = value as Record<string, unknown>;
+  if (result.status !== "written" || typeof result.path !== "string") return null;
+  if (!result.notification || typeof result.notification !== "object") return null;
+
+  const notification = result.notification as Record<string, unknown>;
+  if (notification.status !== "failed") return null;
+  const message = typeof notification.message === "string"
+    ? notification.message
+    : "El archivo se guardó, pero no se confirmó el aviso de actividad.";
+  const recovery = typeof notification.recovery === "string"
+    ? notification.recovery
+    : "No se reintentó automáticamente para evitar avisos duplicados.";
+  return `[AVISO DE ACTIVIDAD] ${message} ${recovery}`;
+}
+
 export const executeDeepseekTool = createDeepseekToolExecutor();

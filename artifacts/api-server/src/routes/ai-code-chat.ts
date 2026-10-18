@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { getWriteNotificationSummary } from "./deepseek-tools.ts";
 
 type AiChatMessage = {
   role: "system" | "user" | "assistant" | "tool";
@@ -103,6 +104,7 @@ Be direct, concise, and technically precise. Format code blocks with language ta
     systemPrompt,
   );
   let completion = await dependencies.createCompletion(history, AI_CODE_TOOLS);
+  const notificationSummaries = new Set<string>();
 
   for (let round = 0; round < 4; round += 1) {
     const assistantMessage = completion.choices[0]?.message;
@@ -131,6 +133,8 @@ Be direct, concise, and technically precise. Format code blocks with language ta
               toolCall.function.name,
               toolCall.function.arguments,
             );
+      const notificationSummary = getWriteNotificationSummary(result);
+      if (notificationSummary) notificationSummaries.add(notificationSummary);
       history.push({
         role: "tool",
         tool_call_id: toolCall.id,
@@ -140,7 +144,10 @@ Be direct, concise, and technically precise. Format code blocks with language ta
     completion = await dependencies.createCompletion(history, AI_CODE_TOOLS);
   }
 
-  const response = completion.choices[0]?.message?.content ?? "";
+  const response = [
+    completion.choices[0]?.message?.content ?? "",
+    ...notificationSummaries,
+  ].filter(Boolean).join("\n\n");
   await dependencies.saveAssistantResponse(conversationId, response);
   res.json({ response, conversationId });
 }
