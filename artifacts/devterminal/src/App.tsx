@@ -12,6 +12,7 @@ import Tools from "@/pages/tools";
 import Runner from "@/pages/runner";
 import Neural from "@/pages/neural";
 import Agents from "@/pages/agents";
+import Cortex from "@/pages/cortex";
 import { Layout } from "@/components/layout";
 import { AppProvider } from "@/lib/app-context";
 import { NeuralProvider } from "@/lib/neural-context";
@@ -27,6 +28,7 @@ const PERSISTENT_PAGES: Array<{ path: string; Component: ComponentType }> = [
   { path: "/tools", Component: Tools },
   { path: "/neural", Component: Neural },
   { path: "/agents", Component: Agents },
+  { path: "/cortex", Component: Cortex },
 ];
 
 function normalizePath(path: string) {
