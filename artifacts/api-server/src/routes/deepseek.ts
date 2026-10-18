@@ -17,6 +17,23 @@ const DEEPSEEK_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "write_file",
+      description:
+        "Aplica el código solicitado por el Arquitecto a un archivo existente del workspace. Solo escribe rutas relativas dentro del proyecto y archivos de código permitidos; nunca secretos ni archivos fuera del proyecto. Usa únicamente cuando el usuario solicite explícitamente modificar o aplicar cambios.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Ruta relativa de un archivo existente del proyecto." },
+          content: { type: "string", description: "Contenido completo final del archivo, no un diff." },
+        },
+        required: ["path", "content"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "execute_sql",
       description:
         "Ejecuta una consulta SELECT de solo lectura en las tablas agents, conversations, messages o snippets.",

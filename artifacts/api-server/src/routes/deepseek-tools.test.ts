@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { relative, resolve, sep } from "node:path";
 import {
   readProjectCode,
   validateDeepseekToolArguments,
   validateExecuteSqlQuery,
+  writeProjectCode,
 } from "./deepseek-tool-safety.ts";
 
 describe("DeepSeek tool permissions", () => {
@@ -61,6 +64,55 @@ describe("DeepSeek tool permissions", () => {
       validateDeepseekToolArguments("get_neural_activity", {}),
       {},
     );
+  });
+
+  it("allows writes only to an existing in-project code file with exact arguments", () => {
+    assert.deepEqual(
+      validateDeepseekToolArguments("write_file", {
+        path: "artifacts/api-server/src/routes/deepseek.ts",
+        content: "export {};\n",
+      }),
+      {
+        path: "artifacts/api-server/src/routes/deepseek.ts",
+        content: "export {};\n",
+      },
+    );
+    assert.throws(
+      () => validateDeepseekToolArguments("write_file", {
+        path: "../../.env",
+        content: "LEAK=1",
+      }),
+      /relativa/,
+    );
+    assert.throws(
+      () => validateDeepseekToolArguments("write_file", {
+        path: "artifacts/api-server/src/routes/deepseek.ts",
+        content: "ok",
+        overwrite: true,
+      }),
+      /Argumentos inválidos/,
+    );
+    assert.throws(
+      () => validateDeepseekToolArguments("write_file", {
+        path: "artifacts/api-server/src/routes/deepseek.ts",
+        content: "x".repeat(256 * 1024 + 1),
+      }),
+      /supera el límite/,
+    );
+  });
+
+  it("writes complete code to an existing project file", async () => {
+    const directory = await mkdtemp(resolve(process.cwd(), "src/routes/.write-test-"));
+    const target = resolve(directory, "fixture.ts");
+    const toolPath = relative(resolve(process.cwd(), "../.."), target).split(sep).join("/");
+    try {
+      await writeFile(target, "const oldValue = true;\n");
+      const result = await writeProjectCode(toolPath, "const newValue = true;\n");
+      assert.equal(result.bytes, Buffer.byteLength("const newValue = true;\n"));
+      assert.equal(await readFile(target, "utf8"), "const newValue = true;\n");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("only accepts fixed, read-only diagnostic commands", () => {

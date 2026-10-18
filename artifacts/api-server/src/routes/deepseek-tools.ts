@@ -1,13 +1,15 @@
-import { pool } from "@workspace/db";
+import { db, neuralEventsTable, pool } from "@workspace/db";
 import {
   readProjectCode,
   validateDeepseekToolArguments,
   validateExecuteSqlQuery,
+  writeProjectCode,
 } from "./deepseek-tool-safety";
 import { serializeSqlRows } from "./deepseek-serialization";
 import { getReplitIntegrationStatus } from "./deepseek-integrations";
 import { getRuntimeDiagnostics } from "../lib/runtime-diagnostics";
 import * as pty from "node-pty";
+import { publishNeuralEvent } from "./neural-event-bus";
 const MAX_ROWS = 20;
 
 export async function executeSqlTool(query: string): Promise<string> {
@@ -131,6 +133,29 @@ export async function executeDeepseekTool(
       return JSON.stringify({
         path: args.path,
         content: await readProjectCode(args.path),
+      });
+    }
+    if (name === "write_file") {
+      const result = await writeProjectCode(args.path, args.content);
+      const eventContent = `[AUTONOMOUS WRITE] Archivo actualizado -> Ejecutando en PTY... ${result.path}`;
+      const [event] = await db.insert(neuralEventsTable).values({
+        origin: "terminal",
+        eventType: "autonomous_write",
+        content: eventContent,
+      }).returning();
+      if (event) {
+        await publishNeuralEvent({
+          id: event.id,
+          origin: event.origin as "terminal",
+          eventType: event.eventType,
+          content: event.content,
+          createdAt: event.createdAt.toISOString(),
+        });
+      }
+      return JSON.stringify({
+        ...result,
+        status: "written",
+        runtime: "El archivo está guardado; los watchers del proyecto aplicarán el cambio.",
       });
     }
     if (name === "get_neural_activity") {

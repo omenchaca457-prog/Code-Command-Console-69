@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type OpenAI from "openai";
 import { db, conversations, messages, agentsTable, neuralEventsTable } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { eq, asc, sql } from "drizzle-orm";
@@ -18,6 +19,25 @@ import { publishNeuralEvent } from "./neural-event-bus";
 const router = Router();
 const agentCircuitBreaker = new AgentCircuitBreaker();
 const AGENT_PROVIDER_TIMEOUT_MS = 5_000;
+const AI_CODE_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  {
+    type: "function",
+    function: {
+      name: "write_file",
+      description:
+        "Escribe el contenido final en un archivo de código existente del workspace. Invócala únicamente cuando el usuario pida explícitamente aplicar o guardar cambios. No uses rutas absolutas, archivos sensibles ni rutas fuera del proyecto.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Ruta relativa de un archivo existente." },
+          content: { type: "string", description: "Contenido completo final del archivo." },
+        },
+        required: ["path", "content"],
+        additionalProperties: false,
+      },
+    },
+  },
+];
 
 function evaluateAgentResponse(aiResponse: string, context: string | null | undefined) {
   const parsedOmega = parseOmega(aiResponse);
@@ -164,6 +184,7 @@ router.post("/ai/chat", async (req, res) => {
     : `You are an elite AI coding assistant inside DevTerminal — a professional developer tool. You help with code, debugging, explanations, algorithms, security concepts, and any programming topic.
 ${language ? `Current language context: ${language}.` : ""}
 ${context ? `Code context:\n\`\`\`\n${context}\n\`\`\`` : ""}
+When the user explicitly asks you to modify or apply code, inspect the current source and use write_file with the complete final content. Only existing code files inside the workspace can be changed. Do not modify secrets or run arbitrary shell commands. Otherwise, answer normally.
 Be direct, concise, and technically precise. Format code blocks with language tags. Think like a senior engineer.`;
 
   await db.insert(messages).values([
@@ -178,6 +199,11 @@ Be direct, concise, and technically precise. Format code blocks with language ta
     .orderBy(asc(messages.id));
 
   let completion: Awaited<ReturnType<typeof openai.chat.completions.create>>;
+  const chatMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
+    history.map((m) => ({
+      role: m.role as "system" | "user" | "assistant",
+      content: m.content,
+    }));
   const controller = agentId ? new AbortController() : null;
   const timeout = controller
     ? setTimeout(() => controller.abort(), AGENT_PROVIDER_TIMEOUT_MS)
@@ -186,11 +212,42 @@ Be direct, concise, and technically precise. Format code blocks with language ta
     completion = await openai.chat.completions.create({
       model: "gpt-5.4",
       max_completion_tokens: 8192,
-      messages: history.map((m) => ({
-        role: m.role as "system" | "user" | "assistant",
-        content: m.content,
-      })),
+      messages: chatMessages,
+      ...(agentId ? {} : { tools: AI_CODE_TOOLS, tool_choice: "auto" as const }),
     }, controller ? { signal: controller.signal } : undefined);
+    for (let round = 0; !agentId && round < 4; round += 1) {
+      const assistantMessage = completion.choices[0]?.message;
+      const toolCalls = assistantMessage?.tool_calls ?? [];
+      if (!toolCalls.length) break;
+      chatMessages.push(assistantMessage);
+      for (const toolCall of toolCalls) {
+        if (toolCall.type !== "function" || toolCall.function.name !== "write_file") {
+          chatMessages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ error: "Herramienta no permitida." }),
+          });
+          continue;
+        }
+        const { executeDeepseekTool } = await import("./deepseek-tools.ts");
+        const result = await executeDeepseekTool(
+          toolCall.function.name,
+          toolCall.function.arguments,
+        );
+        chatMessages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: result,
+        });
+      }
+      completion = await openai.chat.completions.create({
+        model: "gpt-5.4",
+        max_completion_tokens: 8192,
+        messages: chatMessages,
+        tools: AI_CODE_TOOLS,
+        tool_choice: "auto",
+      }, controller ? { signal: controller.signal } : undefined);
+    }
     if (agentId) agentCircuitBreaker.recordSuccess(agentId);
   } catch (error) {
     if (agentId) {

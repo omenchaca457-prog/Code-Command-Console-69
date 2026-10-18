@@ -64,6 +64,8 @@ export default function TerminalPage() {
   const fitRef = useRef<FitAddon | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
   const deepSeekAbortRef = useRef<AbortController | null>(null);
+  const lastAutonomousEventIdRef = useRef(0);
+  const initializedAutonomousEventsRef = useRef(false);
   const { currentCode, currentLanguage } = useAppContext();
   const { recordEvent, events } = useNeuralContext();
   const recordEventRef = useRef(recordEvent);
@@ -80,6 +82,25 @@ export default function TerminalPage() {
   useEffect(() => {
     recordEventRef.current = recordEvent;
   }, [recordEvent]);
+
+  useEffect(() => {
+    if (!initializedAutonomousEventsRef.current) {
+      lastAutonomousEventIdRef.current = events.reduce(
+        (largest, event) => Math.max(largest, event.id),
+        0,
+      );
+      initializedAutonomousEventsRef.current = true;
+      return;
+    }
+
+    for (const event of [...events].sort((left, right) => left.id - right.id)) {
+      if (event.id <= lastAutonomousEventIdRef.current) continue;
+      lastAutonomousEventIdRef.current = event.id;
+      if (event.eventType === "autonomous_write" && termRef.current) {
+        writeSafeText(termRef.current, `\n${event.content}\n`);
+      }
+    }
+  }, [events]);
 
   const sendResize = useCallback((term: XTerm, ws: WebSocket) => {
     if (ws.readyState === WebSocket.OPEN) {
