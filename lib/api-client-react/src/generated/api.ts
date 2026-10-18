@@ -29,6 +29,8 @@ import type {
   ExecuteResult,
   HealthStatus,
   LanguageList,
+  NeuralEvent,
+  NeuralEventInput,
   Snippet,
   UpdateSnippetBody,
 } from "./api.schemas";
@@ -437,6 +439,167 @@ export const useCreateSnippet = <
   TContext
 > => {
   return useMutation(getCreateSnippetMutationOptions(options));
+};
+
+/**
+ * @summary List recent neural activity events
+ */
+export const getListNeuralEventsUrl = () => {
+  return `/api/neural-events`;
+};
+
+export const listNeuralEvents = async (
+  options?: RequestInit,
+): Promise<NeuralEvent[]> => {
+  return customFetch<NeuralEvent[]>(getListNeuralEventsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListNeuralEventsQueryKey = () => {
+  return [`/api/neural-events`] as const;
+};
+
+export const getListNeuralEventsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listNeuralEvents>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listNeuralEvents>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListNeuralEventsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listNeuralEvents>>
+  > = ({ signal }) => listNeuralEvents({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listNeuralEvents>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListNeuralEventsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listNeuralEvents>>
+>;
+export type ListNeuralEventsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List recent neural activity events
+ */
+
+export function useListNeuralEvents<
+  TData = Awaited<ReturnType<typeof listNeuralEvents>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listNeuralEvents>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListNeuralEventsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Record a neural activity event
+ */
+export const getCreateNeuralEventUrl = () => {
+  return `/api/neural-events`;
+};
+
+export const createNeuralEvent = async (
+  neuralEventInput: NeuralEventInput,
+  options?: RequestInit,
+): Promise<NeuralEvent> => {
+  return customFetch<NeuralEvent>(getCreateNeuralEventUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(neuralEventInput),
+  });
+};
+
+export const getCreateNeuralEventMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createNeuralEvent>>,
+    TError,
+    { data: BodyType<NeuralEventInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createNeuralEvent>>,
+  TError,
+  { data: BodyType<NeuralEventInput> },
+  TContext
+> => {
+  const mutationKey = ["createNeuralEvent"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createNeuralEvent>>,
+    { data: BodyType<NeuralEventInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createNeuralEvent(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateNeuralEventMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createNeuralEvent>>
+>;
+export type CreateNeuralEventMutationBody = BodyType<NeuralEventInput>;
+export type CreateNeuralEventMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Record a neural activity event
+ */
+export const useCreateNeuralEvent = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createNeuralEvent>>,
+    TError,
+    { data: BodyType<NeuralEventInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createNeuralEvent>>,
+  TError,
+  { data: BodyType<NeuralEventInput> },
+  TContext
+> => {
+  return useMutation(getCreateNeuralEventMutationOptions(options));
 };
 
 /**

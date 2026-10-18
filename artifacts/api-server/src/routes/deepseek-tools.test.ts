@@ -27,6 +27,11 @@ describe("DeepSeek tool permissions", () => {
       "artifacts/api-server/src/routes/deepseek.ts",
     );
     assert.match(source, /DEEPSEEK_TOOLS/);
+    const neuralToolSource = await readProjectCode(
+      "artifacts/api-server/src/routes/deepseek-tools.ts",
+    );
+    assert.match(neuralToolSource, /get_neural_activity/);
+    assert.match(neuralToolSource, /LIMIT 10/);
     await assert.rejects(() => readProjectCode("../../.env"));
     await assert.rejects(() => readProjectCode(".env"));
     await assert.rejects(() => readProjectCode(".ENV"));
@@ -50,4 +55,12 @@ describe("DeepSeek tool permissions", () => {
       /relativa/,
     );
   });
+
+  it("accepts an empty argument object for neural activity lookup", () => {
+    assert.deepEqual(
+      validateDeepseekToolArguments("get_neural_activity", {}),
+      {},
+    );
+  });
+
 });

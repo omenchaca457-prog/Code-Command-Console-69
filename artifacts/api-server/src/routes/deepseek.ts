@@ -45,6 +45,19 @@ const DEEPSEEK_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "get_neural_activity",
+      description: "Consulta los 10 eventos más recientes de la Red Neuronal.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 const handleDeepseekChat = async (

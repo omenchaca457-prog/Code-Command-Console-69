@@ -1,0 +1,21 @@
+Arquitecto, vamos a construir el "Núcleo de Conciencia Unificada". Necesito que conectes todas las pestañas (Terminal, Runner, Agents, Library) a un estado global y a la Red Neuronal para que todo lo que ocurra en el sistema se refleje allí y la IA tenga conciencia de ello.
+
+Implementa los siguientes pasos:
+
+1. CREAR EL CONTEXTO GLOBAL (NeuralContext):
+En el frontend (React), crea un `NeuralContext.tsx`. Este contexto debe manejar un arreglo de "Eventos Neuronales" (neural_events) que guarde el tipo de evento, el origen (Terminal, Runner, Agents), el contenido y un timestamp.
+
+2. EMISIÓN DE EVENTOS (Interconexión):
+- En el `Runner`: cada vez que se ejecute un código, dispara un evento al Contexto Global (ej. { origen: 'runner', accion: 'code_run', lenguaje: 'python' }).
+- En la `Terminal`: cada vez que se envíe un comando `ds` o se ejecute un script, dispara un evento (ej. { origen: 'terminal', accion: 'ai_query' }).
+- En los `Agents`: cuando un agente termine una tarea, dispara un evento (ej. { origen: 'agents', accion: 'agent_complete', agente: 'Optimizer' }).
+
+3. CONECTAR LA RED NEURONAL (Visualización):
+Modifica la página `neural.tsx` para que escuche este Contexto Global. Cada vez que llegue un evento nuevo, la red neuronal debe dibujar un nuevo nodo (con el nombre del origen o del lenguaje) y trazar una línea hacia el núcleo central (SQ-AI). Los nodos deben tener una animación al aparecer.
+
+4. CONECTAR LA IA CON LA RED (Backend):
+- Asegúrate de que el evento neuronal también se guarde en la base de datos (tabla `neural_events`).
+- En la herramienta `execute_sql` de la SQ-AI, añade una nueva herramienta llamada `get_neural_activity` que haga un `SELECT` a los últimos 10 eventos neuronales. 
+- Modifica el `SYSTEM_PROMPT` para que SQ-AI sepa que tiene acceso a esta red. (Ej: "Tienes acceso a la Red Neuronal mediante `get_neural_activity`. Úsala para saber qué está pasando en el sistema").
+
+Haz todos los cambios, verifica que compile sin errores y reinicia el servidor.

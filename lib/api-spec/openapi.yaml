@@ -14,6 +14,8 @@ tags:
     description: Code execution
   - name: snippets
     description: Code snippets management
+  - name: neural
+    description: Neural activity events
   - name: ai
     description: AI assistant
 paths:
@@ -93,6 +95,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Snippet"
+
+  /neural-events:
+    get:
+      operationId: listNeuralEvents
+      tags: [neural]
+      summary: List recent neural activity events
+      responses:
+        "200":
+          description: Recent neural events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NeuralEvent"
+    post:
+      operationId: createNeuralEvent
+      tags: [neural]
+      summary: Record a neural activity event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NeuralEventInput"
+      responses:
+        "201":
+          description: Recorded neural event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NeuralEvent"
 
   /snippets/recent:
     get:
@@ -381,6 +415,39 @@ components:
         - language
         - createdAt
         - updatedAt
+
+    NeuralEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        origin:
+          type: string
+          enum: [terminal, runner, agents]
+        eventType:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, origin, eventType, content, createdAt]
+
+    NeuralEventInput:
+      type: object
+      properties:
+        origin:
+          type: string
+          enum: [terminal, runner, agents]
+        eventType:
+          type: string
+          minLength: 1
+          maxLength: 80
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      required: [origin, eventType, content]
 
     CreateSnippetBody:
       type: object

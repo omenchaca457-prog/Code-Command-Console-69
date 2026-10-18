@@ -53,6 +53,46 @@ export interface Snippet {
   lastRunAt?: string | null;
 }
 
+export type NeuralEventOrigin =
+  (typeof NeuralEventOrigin)[keyof typeof NeuralEventOrigin];
+
+export const NeuralEventOrigin = {
+  terminal: "terminal",
+  runner: "runner",
+  agents: "agents",
+} as const;
+
+export interface NeuralEvent {
+  id: number;
+  origin: NeuralEventOrigin;
+  eventType: string;
+  content: string;
+  createdAt: string;
+}
+
+export type NeuralEventInputOrigin =
+  (typeof NeuralEventInputOrigin)[keyof typeof NeuralEventInputOrigin];
+
+export const NeuralEventInputOrigin = {
+  terminal: "terminal",
+  runner: "runner",
+  agents: "agents",
+} as const;
+
+export interface NeuralEventInput {
+  origin: NeuralEventInputOrigin;
+  /**
+   * @minLength 1
+   * @maxLength 80
+   */
+  eventType: string;
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
+  content: string;
+}
+
 export interface CreateSnippetBody {
   title: string;
   code: string;

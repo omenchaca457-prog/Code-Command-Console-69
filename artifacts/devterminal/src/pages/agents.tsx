@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Zap, Plus, Square, RefreshCw, Send, ChevronRight, Activity } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppContext } from "@/lib/app-context";
+import { useNeuralContext } from "@/lib/neural-context";
 import { AgentRunLock } from "@/lib/agent-run-lock";
 import { useToast } from "@/hooks/use-toast";
 
@@ -110,6 +111,7 @@ export default function Agents() {
   agentsRef.current = agents;
   const activeRunsRef = useRef(new AgentRunLock());
   const { currentCode, currentLanguage } = useAppContext();
+  const { recordEvent } = useNeuralContext();
   const { toast } = useToast();
   const evolveTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const evolveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -176,6 +178,11 @@ export default function Agents() {
       if (!resp.ok) throw new Error(data.error || "No se pudo completar el análisis.");
       const response = data.response || "Sin respuesta.";
       const newCoherence = typeof data.omega === "number" ? data.omega : 0;
+      recordEvent({
+        origin: "agents",
+        eventType: data.analysisStatus === "failed" ? "agent_failed" : "agent_complete",
+        content: `agent=${agent.role.name}; omega=${newCoherence.toFixed(2)}`,
+      });
 
       updateAgent(agent.id, {
         status: data.analysisStatus === "failed" ? "error" : "done",
@@ -196,7 +203,7 @@ export default function Agents() {
     } finally {
       activeRunsRef.current.release(agent.id);
     }
-  }, [currentCode, currentLanguage, globalTask, updateAgent]);
+  }, [currentCode, currentLanguage, globalTask, recordEvent, updateAgent]);
 
   const deployAll = () => {
     agents.forEach(a => {

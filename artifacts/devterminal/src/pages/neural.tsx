@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Eye, Zap, Activity, RefreshCw } from "lucide-react";
 import { useAiChat } from "@workspace/api-client-react";
 import { useAppContext } from "@/lib/app-context";
+import { useNeuralContext } from "@/lib/neural-context";
 
 type Vec2 = { x: number; y: number };
 
@@ -94,6 +95,7 @@ export default function Neural() {
   const [aiResponse, setAiResponse] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const { currentCode, currentLanguage } = useAppContext();
+  const { events } = useNeuralContext();
   const chatMutation = useAiChat();
 
   const initNodes = useCallback((W: number, H: number) => {
@@ -350,6 +352,55 @@ export default function Neural() {
       window.removeEventListener("resize", handleResize);
     };
   }, [initNodes]);
+
+  const seenNeuralEventsRef = useRef(new Set<number>());
+  useEffect(() => {
+    const nodes = nodesRef.current;
+    const core = nodes.find(node => node.label === "SQ-AI");
+    if (!core) return;
+
+    for (const event of [...events].reverse()) {
+      if (seenNeuralEventsRef.current.has(event.id)) continue;
+      seenNeuralEventsRef.current.add(event.id);
+      if (nodes.length >= 30) continue;
+
+      const agentName = event.content.match(/agent=([^;]+)/)?.[1]?.trim();
+      const language = event.content.match(/language=([^;]+)/)?.[1]?.trim();
+      const label = event.origin === "agents"
+        ? agentName || "agent"
+        : event.origin === "runner"
+          ? language || "runner"
+          : event.eventType === "ai_query" ? "terminal/ds" : "terminal";
+      const color = event.origin === "agents"
+        ? "#a78bfa"
+        : event.origin === "runner" ? "#22c55e" : "#00ffff";
+      if (nodes.length >= 36) {
+        const removed = nodes.splice(CORE_CONCEPTS.length, 1)[0];
+        if (removed) {
+          core.connections = core.connections.filter(id => id !== removed.id);
+          for (const existing of nodes) {
+            existing.connections = existing.connections.filter(id => id !== removed.id);
+          }
+        }
+      }
+      const node = makeNode(label.slice(0, 18), color, 13, 1.4, canvasRef.current?.width ?? 800, canvasRef.current?.height ?? 500, Date.now());
+      node.connections.push(core.id);
+      node.pulse = 1;
+      nodes.push(node);
+      core.connections.push(node.id);
+      for (let i = 0; i < 4; i += 1) {
+        particlesRef.current.push({
+          x: node.x,
+          y: node.y,
+          vx: randBetween(-1.5, 1.5),
+          vy: randBetween(-1.5, 1.5),
+          life: 1,
+          color,
+          size: randBetween(1, 3),
+        });
+      }
+    }
+  }, [events]);
 
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;

@@ -6,6 +6,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
 import { TerminalSquare, Wifi, WifiOff, RotateCcw, Maximize2, Minimize2, Search, X } from "lucide-react";
 import { useAppContext } from "@/lib/app-context";
+import { useNeuralContext } from "@/lib/neural-context";
 
 const BASE_HOST = window.location.host;
 const WS_PROTOCOL = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -17,6 +18,11 @@ function removeTerminalControls(value: string) {
 
 function writeSafeText(term: XTerm, value: string) {
   term.write(removeTerminalControls(value).replace(/\r?\n/g, "\r\n"));
+}
+
+function scriptCommandName(command: string): string | null {
+  const match = command.trim().match(/^(?:(?:python3?|node|bash|sh|ruby|perl|php|go\s+run|cargo\s+run)\b|\.\/[^\s]+|[^\s]+\.(?:py|js|mjs|cjs|ts|sh|rb|go))\b/i);
+  return match?.[0]?.toLowerCase().replace(/\s+/g, " ") ?? null;
 }
 
 async function typeResponse(term: XTerm, value: string, signal: AbortSignal) {
@@ -35,6 +41,9 @@ export default function TerminalPage() {
   const searchRef = useRef<SearchAddon | null>(null);
   const deepSeekAbortRef = useRef<AbortController | null>(null);
   const { currentCode, currentLanguage } = useAppContext();
+  const { recordEvent } = useNeuralContext();
+  const recordEventRef = useRef(recordEvent);
+  const shellCommandBufferRef = useRef("");
   const [status, setStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
   const [sessionCount, setSessionCount] = useState(0);
   const [showSearch, setShowSearch] = useState(false);
@@ -42,6 +51,10 @@ export default function TerminalPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [smartCommand, setSmartCommand] = useState("");
   const [isDeepSeekThinking, setIsDeepSeekThinking] = useState(false);
+
+  useEffect(() => {
+    recordEventRef.current = recordEvent;
+  }, [recordEvent]);
 
   const sendResize = useCallback((term: XTerm, ws: WebSocket) => {
     if (ws.readyState === WebSocket.OPEN) {
@@ -138,6 +151,24 @@ export default function TerminalPage() {
     fit.fit();
 
     term.onData((data) => {
+      if (data.includes("\r") || data.includes("\n")) {
+        const command = shellCommandBufferRef.current.trim();
+        const scriptName = scriptCommandName(command);
+        if (scriptName) {
+          recordEventRef.current({
+            origin: "terminal",
+            eventType: "script_run",
+            content: `script=${scriptName}`,
+          });
+        }
+        shellCommandBufferRef.current = "";
+      } else if (data === "\x7f") {
+        shellCommandBufferRef.current = shellCommandBufferRef.current.slice(0, -1);
+      } else if (data === "\x03" || data === "\x15") {
+        shellCommandBufferRef.current = "";
+      } else if (!data.includes("\x1b")) {
+        shellCommandBufferRef.current += data.replace(/[^\x20-\x7e]/g, "").slice(0, 1000);
+      }
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(data);
       }
@@ -196,6 +227,14 @@ export default function TerminalPage() {
       const ws = wsRef.current;
       if (ws?.readyState === WebSocket.OPEN) {
         ws.send(`${command}\r`);
+        const scriptName = scriptCommandName(command);
+        if (scriptName) {
+          recordEvent({
+            origin: "terminal",
+            eventType: "script_run",
+            content: `script=${scriptName}`,
+          });
+        }
       } else {
         writeSafeText(term, "\nLa shell local está desconectada. Reconecta la sesión e inténtalo de nuevo.\n");
       }
@@ -209,6 +248,11 @@ export default function TerminalPage() {
     }
 
     const controller = new AbortController();
+    recordEvent({
+      origin: "terminal",
+      eventType: "ai_query",
+      content: "Consulta SQ-AI enviada desde la terminal",
+    });
     deepSeekAbortRef.current = controller;
     setIsDeepSeekThinking(true);
     writeSafeText(term, `\nSQ-AI> ${prompt}\n`);

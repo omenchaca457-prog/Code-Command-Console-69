@@ -4,7 +4,7 @@ import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path"
 
 const MAX_QUERY_LENGTH = 4000;
 const MAX_FILE_BYTES = 64 * 1024;
-const ALLOWED_TABLES = new Set(["agents", "conversations", "messages", "snippets"]);
+const ALLOWED_TABLES = new Set(["agents", "conversations", "messages", "snippets", "neural_events"]);
 const ALLOWED_EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json", ".html", ".css",
   ".md", ".yaml", ".yml", ".sql", ".py", ".sh",
@@ -21,6 +21,7 @@ export function validateDeepseekToolArguments(
   const allowedKeys =
     name === "execute_sql" ? ["query"] :
     name === "get_current_code" ? ["path"] :
+    name === "get_neural_activity" ? [] :
     null;
   if (!allowedKeys) throw new Error(`Herramienta no permitida: ${name}`);
 
@@ -33,6 +34,7 @@ export function validateDeepseekToolArguments(
   ) {
     throw new Error(`Argumentos inválidos para ${name}.`);
   }
+  if (name === "get_neural_activity") return {};
 
   const argument = args[allowedKeys[0]!];
   if (typeof argument !== "string" || !argument.trim()) {
@@ -62,7 +64,7 @@ export function validateExecuteSqlQuery(query: string): string {
     .map((match) => match[1]?.toLowerCase())
     .filter((table): table is string => Boolean(table));
   if (relations.some((table) => !ALLOWED_TABLES.has(table))) {
-    throw new Error("execute_sql solo puede consultar agents, conversations, messages o snippets.");
+    throw new Error("execute_sql solo puede consultar tablas permitidas de la aplicación.");
   }
   return singleStatement;
 }

@@ -14,6 +14,7 @@ import Neural from "@/pages/neural";
 import Agents from "@/pages/agents";
 import { Layout } from "@/components/layout";
 import { AppProvider } from "@/lib/app-context";
+import { NeuralProvider } from "@/lib/neural-context";
 
 const queryClient = new QueryClient();
 
@@ -87,14 +88,16 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <AppProvider>
+        <NeuralProvider>
+         <AppProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
                 <Layout>
                   <PersistentPages />
                 </Layout>
           </WouterRouter>
           <Toaster />
-        </AppProvider>
+         </AppProvider>
+        </NeuralProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

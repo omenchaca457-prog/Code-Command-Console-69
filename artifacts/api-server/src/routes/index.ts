@@ -5,6 +5,7 @@ import snippetsRouter from "./snippets";
 import aiRouter from "./ai";
 import autorunRouter from "./autorun";
 import deepseekRouter from "./deepseek";
+import neuralEventsRouter from "./neural-events";
 
 const router: IRouter = Router();
 
@@ -13,6 +14,7 @@ router.use(executeRouter);
 router.use(snippetsRouter);
 router.use(aiRouter);
 router.use(deepseekRouter);
+router.use(neuralEventsRouter);
 router.use(autorunRouter);
 
 export default router;

@@ -11,6 +11,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { useNeuralContext } from "@/lib/neural-context";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
@@ -68,6 +69,7 @@ export default function Runner() {
   const abortRefs = useRef<Record<string, AbortController>>({});
   const loadedSnippetIdRef = useRef<string | null>(null);
   const { toast } = useToast();
+  const { recordEvent } = useNeuralContext();
   const queryClient = useQueryClient();
   const createSnippetMutation = useCreateSnippet();
   const [, setLocation] = useLocation();
@@ -150,12 +152,24 @@ export default function Runner() {
       const data = await resp.json();
       const execTime = (Date.now() - start) / 1000;
       const out = [data.stdout, data.stderr].filter(Boolean).join("\n");
+      recordEvent({
+        origin: "runner",
+        eventType: "code_run",
+        content: `language=${panel.lang.id}; exitCode=${data.exitCode}; codeLength=${panel.code.length}`,
+      });
       updatePanel(panel.id, {
         status: data.exitCode === 0 ? "done" : "error",
         output: out || "(no output)",
         execTime,
       });
     } catch (e: any) {
+      if (e.name !== "AbortError") {
+        recordEvent({
+          origin: "runner",
+          eventType: "code_run_error",
+          content: `language=${panel.lang.id}; execution request failed`,
+        });
+      }
       if (e.name === "AbortError") {
         updatePanel(panel.id, { status: "idle", output: "[STOPPED]" });
       } else {
@@ -164,7 +178,7 @@ export default function Runner() {
     } finally {
       delete abortRefs.current[panel.id];
     }
-  }, [updatePanel]);
+  }, [recordEvent, updatePanel]);
 
   const stopPanel = useCallback((id: string) => {
     abortRefs.current[id]?.abort();

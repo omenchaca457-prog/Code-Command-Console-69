@@ -28,6 +28,16 @@ export async function executeSqlTool(query: string): Promise<string> {
   }
 }
 
+async function getNeuralActivity(): Promise<string> {
+  const { rows } = await pool.query(`
+    SELECT id, origin, event_type, content, created_at
+    FROM neural_events
+    ORDER BY created_at DESC
+    LIMIT 10
+  `);
+  return JSON.stringify(serializeSqlRows(rows));
+}
+
 export async function executeDeepseekTool(
   name: string,
   rawArguments: string,
@@ -51,6 +61,9 @@ export async function executeDeepseekTool(
         path: args.path,
         content: await readProjectCode(args.path),
       });
+    }
+    if (name === "get_neural_activity") {
+      return await getNeuralActivity();
     }
     return JSON.stringify({ error: `Herramienta no permitida: ${name}` });
   } catch (error) {

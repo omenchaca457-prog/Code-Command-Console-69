@@ -68,6 +68,31 @@ export const CreateSnippetBody = zod.object({
 });
 
 /**
+ * @summary List recent neural activity events
+ */
+export const ListNeuralEventsResponseItem = zod.object({
+  id: zod.number(),
+  origin: zod.enum(["terminal", "runner", "agents"]),
+  eventType: zod.string(),
+  content: zod.string(),
+  createdAt: zod.coerce.date(),
+});
+export const ListNeuralEventsResponse = zod.array(ListNeuralEventsResponseItem);
+
+/**
+ * @summary Record a neural activity event
+ */
+export const createNeuralEventBodyEventTypeMax = 80;
+
+export const createNeuralEventBodyContentMax = 2000;
+
+export const CreateNeuralEventBody = zod.object({
+  origin: zod.enum(["terminal", "runner", "agents"]),
+  eventType: zod.string().min(1).max(createNeuralEventBodyEventTypeMax),
+  content: zod.string().min(1).max(createNeuralEventBodyContentMax),
+});
+
+/**
  * @summary Get the 5 most recently used snippets
  */
 export const GetRecentSnippetsResponseItem = zod.object({
