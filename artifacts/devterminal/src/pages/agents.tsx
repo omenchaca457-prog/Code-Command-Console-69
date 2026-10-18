@@ -77,7 +77,7 @@ type AgentMessage = {
 type Agent = {
   id: string;
   role: AgentRole;
-  status: "idle" | "thinking" | "done" | "error";
+  status: "idle" | "thinking" | "done" | "error" | "standby";
   messages: AgentMessage[];
   coherence: number | null;
   xp: number;
@@ -143,7 +143,9 @@ export default function Agents() {
   }, [toast]);
 
   const knownCoherence = agents.filter(agent => agent.coherence !== null);
-  const totalCoherence = knownCoherence.reduce((s, a) => s + (a.coherence ?? 0), 0) / Math.max(1, knownCoherence.length);
+  const totalCoherence = knownCoherence.length
+    ? knownCoherence.reduce((sum, agent) => sum + (agent.coherence ?? 0), 0) / knownCoherence.length
+    : null;
 
   const updateAgent = useCallback((id: string, patch: Partial<Agent>) => {
     setAgents(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a));
@@ -155,6 +157,7 @@ export default function Agents() {
     const code = currentCode || "(no hay código en el workspace)";
     const msg = task || globalTask || `Analiza el siguiente código ${currentLanguage}:\n\n${code.slice(0, 800)}`;
     const idempotencyKey = crypto.randomUUID();
+    let providerStandby = false;
 
     updateAgent(agent.id, {
       status: "thinking",
@@ -176,7 +179,10 @@ export default function Agents() {
         }),
       });
       const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || "No se pudo completar el análisis.");
+      if (!resp.ok) {
+        providerStandby = data.status === "standby";
+        throw new Error(data.error || "No se pudo completar el análisis.");
+      }
       const response = data.response || "Sin respuesta.";
       const newCoherence = typeof data.omega === "number" ? data.omega : null;
       recordEvent({
@@ -196,10 +202,14 @@ export default function Agents() {
           { role: "agent", content: response, ts: Date.now() }
         ]
       });
-    } catch {
+    } catch (error) {
       updateAgent(agent.id, {
-        status: "error",
-        messages: [...agent.messages, { role: "agent", content: "Error de conexión neural.", ts: Date.now() }]
+        status: providerStandby ? "standby" : "error",
+        messages: [...agent.messages, {
+          role: "agent",
+          content: error instanceof Error ? error.message : "Error de conexión neural.",
+          ts: Date.now(),
+        }]
       });
     } finally {
       activeRunsRef.current.release(agent.id);
@@ -275,7 +285,9 @@ export default function Agents() {
           <div className="flex items-center gap-3 mt-0.5">
             <span className="text-[10px] font-mono text-[#333] tracking-widest uppercase">{agents.length} agentes</span>
             <CoherenceBar value={totalCoherence} />
-            <span className="text-[10px] font-mono text-[#00ffff]/50">Ω={totalCoherence.toFixed(3)}</span>
+            <span className="text-[10px] font-mono text-[#00ffff]/50">
+              Ω={totalCoherence === null ? "N/D" : totalCoherence.toFixed(3)}
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -370,12 +382,14 @@ export default function Agents() {
   );
 }
 
-function CoherenceBar({ value }: { value: number }) {
-  const color = value > 0.7 ? "#00ffff" : value > 0.4 ? "#f59e0b" : "#ff003c";
+function CoherenceBar({ value }: { value: number | null }) {
+  const color = value !== null && value > 0.7 ? "#00ffff" : value !== null && value > 0.4 ? "#f59e0b" : "#ff003c";
   return (
     <div className="flex items-center gap-1.5">
       <div className="w-16 h-1 bg-[#111]">
-        <div className="h-full transition-all duration-1000" style={{ width: `${value * 100}%`, background: color }} />
+        {value !== null && (
+          <div className="h-full transition-all duration-1000" style={{ width: `${value * 100}%`, background: color }} />
+        )}
       </div>
     </div>
   );
@@ -396,7 +410,7 @@ function AgentCard({ agent, onRun, onRemove, onSendMsg }: {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const statusColor = status === "done" ? "#22c55e" : status === "error" ? "#ff003c" : status === "thinking" ? role.color : "#333";
+  const statusColor = status === "done" ? "#22c55e" : status === "error" ? "#ff003c" : status === "standby" ? "#f59e0b" : status === "thinking" ? role.color : "#333";
 
   return (
     <div className="border bg-[#060606] overflow-hidden flex flex-col" style={{ borderColor: status === "idle" ? "#111" : role.color + "30" }}>
@@ -408,7 +422,7 @@ function AgentCard({ agent, onRun, onRemove, onSendMsg }: {
             <div className="font-mono text-[11px] font-bold uppercase tracking-wider" style={{ color: role.color }}>{role.name}</div>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-[9px] font-mono text-[#333]">iter:{iterations} · XP:{agent.xp}</span>
-              <CoherenceBar value={coherence ?? 0} />
+              <CoherenceBar value={coherence} />
               <span className="text-[9px] font-mono" style={{ color: coherence !== null && coherence > 0.7 ? "#00ffff" : "#444" }}>
                 {coherence === null ? "Ω N/D" : `Ω${coherence.toFixed(2)}`}
               </span>

@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { db, conversations, messages, agentsTable } from "@workspace/db";
+import { db, conversations, messages, agentsTable, neuralEventsTable } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, sql } from "drizzle-orm";
 import { AiChatBody, AiExplainBody, AiImproveBody } from "@workspace/api-zod";
 import { persistAgentResponse } from "./agent-message-persistence";
 import {
@@ -12,8 +12,11 @@ import {
   hasAgentEvidence,
   parseOmega,
 } from "./agent-evaluation";
+import { AgentCircuitBreaker } from "./agent-circuit-breaker";
 
 const router = Router();
+const agentCircuitBreaker = new AgentCircuitBreaker();
+const AGENT_PROVIDER_TIMEOUT_MS = 5_000;
 
 function evaluateAgentResponse(aiResponse: string, context: string | null | undefined) {
   const parsedOmega = parseOmega(aiResponse);
@@ -108,6 +111,22 @@ router.post("/ai/chat", async (req, res) => {
     }
   }
 
+  if (agentId) {
+    const remainingMs = agentCircuitBreaker.remainingMs(agentId);
+    if (remainingMs > 0) {
+      await db.update(agentsTable).set({
+        status: "standby",
+        updatedAt: new Date(),
+      }).where(eq(agentsTable.id, agentId));
+      res.status(503).json({
+        error: "Agente en pausa de seguridad tras fallos consecutivos. Reintenta cuando termine el enfriamiento.",
+        status: "standby",
+        retryAfterMs: remainingMs,
+      });
+      return;
+    }
+  }
+
   const agentMetrics = agentId
     ? buildAgentEvidenceMetrics(context, language)
     : null;
@@ -158,6 +177,10 @@ Be direct, concise, and technically precise. Format code blocks with language ta
     .orderBy(asc(messages.id));
 
   let completion: Awaited<ReturnType<typeof openai.chat.completions.create>>;
+  const controller = agentId ? new AbortController() : null;
+  const timeout = controller
+    ? setTimeout(() => controller.abort(), AGENT_PROVIDER_TIMEOUT_MS)
+    : undefined;
   try {
     completion = await openai.chat.completions.create({
       model: "gpt-5.4",
@@ -166,17 +189,36 @@ Be direct, concise, and technically precise. Format code blocks with language ta
         role: m.role as "system" | "user" | "assistant",
         content: m.content,
       })),
-    });
+    }, controller ? { signal: controller.signal } : undefined);
+    if (agentId) agentCircuitBreaker.recordSuccess(agentId);
   } catch (error) {
     if (agentId) {
+      const breaker = agentCircuitBreaker.recordFailure(agentId);
+      const failure = controller?.signal.aborted
+        ? `El proveedor superó el límite de ${AGENT_PROVIDER_TIMEOUT_MS} ms.`
+        : "El proveedor de IA no completó el análisis.";
       await db.update(agentsTable).set({
-        status: "failed",
-        lastFailure: "El proveedor de IA no completó el análisis.",
-        lastOmega: 0.05,
+        status: breaker.remainingMs > 0 ? "standby" : "failed",
+        failedAnalyses: sql`${agentsTable.failedAnalyses} + 1`,
+        lastFailure: failure,
+        lastOmega: null,
         updatedAt: new Date(),
       }).where(eq(agentsTable.id, agentId));
+      await db.insert(neuralEventsTable).values({
+        origin: "agents",
+        eventType: breaker.remainingMs > 0 ? "cortex_recovery" : "agent_failed",
+        content: `agent=${agentId}; consecutive_failures=${breaker.consecutiveFailures}; ${failure}`,
+      });
+      res.status(controller?.signal.aborted ? 504 : 502).json({
+        error: failure,
+        status: breaker.remainingMs > 0 ? "standby" : "failed",
+        retryAfterMs: breaker.remainingMs,
+      });
+      return;
     }
     throw error;
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 
   const aiResponse = completion.choices[0]?.message?.content ?? "";

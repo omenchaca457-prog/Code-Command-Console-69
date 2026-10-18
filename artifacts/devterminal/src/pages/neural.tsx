@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from "react";
-import { Eye, Zap, Activity, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { Eye, Activity, RefreshCw } from "lucide-react";
 import { useAiChat } from "@workspace/api-client-react";
 import { useAppContext } from "@/lib/app-context";
 import { useNeuralContext } from "@/lib/neural-context";
@@ -29,6 +29,14 @@ type Particle = {
   life: number;
   color: string;
   size: number;
+};
+
+type AgentTelemetry = {
+  omega: number | null;
+  activeAgents: number;
+  standbyAgents: number;
+  failedAgents: number;
+  loading: boolean;
 };
 
 const CORE_CONCEPTS = [
@@ -90,13 +98,55 @@ export default function Neural() {
   const particlesRef = useRef<Particle[]>([]);
   const frameRef = useRef(0);
   const tickRef = useRef(0);
-  const [metrics, setMetrics] = useState({ omega: 0.07, psi: 0.07, k: 0.07, nodes: 0, connections: 0, sessions: 0 });
+  const [telemetry, setTelemetry] = useState<AgentTelemetry>({
+    omega: null, activeAgents: 0, standbyAgents: 0, failedAgents: 0, loading: true,
+  });
   const [selectedNode, setSelectedNode] = useState<NNode | null>(null);
   const [aiResponse, setAiResponse] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const { currentCode, currentLanguage } = useAppContext();
   const { events } = useNeuralContext();
   const chatMutation = useAiChat();
+  const recentEventCount = useMemo(() => {
+    const cutoff = Date.now() - 5 * 60_000;
+    return events.filter((event) => Date.parse(event.createdAt) >= cutoff).length;
+  }, [events]);
+
+  useEffect(() => {
+    let disposed = false;
+    const controller = new AbortController();
+    const loadTelemetry = async () => {
+      try {
+        const response = await fetch("/api/agents", { signal: controller.signal });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const records = await response.json() as Array<{
+          omega: number | null;
+          status: string;
+        }>;
+        if (disposed) return;
+        const measured = records.map((agent) => agent.omega)
+          .filter((omega): omega is number => typeof omega === "number" && Number.isFinite(omega));
+        setTelemetry({
+          omega: measured.length ? measured.reduce((sum, omega) => sum + omega, 0) / measured.length : null,
+          activeAgents: records.filter((agent) => agent.status === "active").length,
+          standbyAgents: records.filter((agent) => agent.status === "standby").length,
+          failedAgents: records.filter((agent) => agent.status === "failed").length,
+          loading: false,
+        });
+      } catch {
+        if (!disposed && !controller.signal.aborted) {
+          setTelemetry((current) => ({ ...current, loading: false }));
+        }
+      }
+    };
+    void loadTelemetry();
+    const timer = window.setInterval(() => void loadTelemetry(), 30_000);
+    return () => {
+      disposed = true;
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const initNodes = useCallback((W: number, H: number) => {
     const now = Date.now();
@@ -129,8 +179,6 @@ export default function Neural() {
     const ctx = canvas.getContext("2d")!;
 
     let spawnTimer = 0;
-    let metricsTimer = 0;
-    let sessionCount = 0;
 
     function spawnParticle(x: number, y: number, color: string) {
       for (let i = 0; i < 4; i++) {
@@ -149,8 +197,6 @@ export default function Neural() {
       const nodes = nodesRef.current;
       tickRef.current++;
       spawnTimer++;
-      metricsTimer++;
-
       // Spawn new node every ~5s
       if (spawnTimer > 300 && nodes.length < 28) {
         spawnTimer = 0;
@@ -165,21 +211,6 @@ export default function Neural() {
         });
         nodes.push(newNode);
         spawnParticle(newNode.x, newNode.y, color);
-        sessionCount++;
-      }
-
-      // Update metrics
-      if (metricsTimer > 60) {
-        metricsTimer = 0;
-        const totalConn = nodes.reduce((s, n) => s + n.connections.length, 0);
-        setMetrics({
-          omega: Math.min(1, 0.05 + nodes.length * 0.012 + Math.sin(tickRef.current * 0.01) * 0.03),
-          psi: Math.min(1, 0.04 + totalConn * 0.006 + Math.cos(tickRef.current * 0.008) * 0.02),
-          k: Math.min(1, 0.03 + nodes.length * 0.008 * totalConn * 0.001 + Math.sin(tickRef.current * 0.015) * 0.02),
-          nodes: nodes.length,
-          connections: totalConn,
-          sessions: sessionCount,
-        });
       }
 
       // Physics
@@ -495,17 +526,16 @@ export default function Neural() {
           </div>
         )}
 
-        <div className="absolute bottom-0 left-0 right-0 font-mono text-[10px] tracking-wider pointer-events-none">
-          <div className="flex gap-4 px-4 py-2 bg-[#060606]/80 border-t border-[#00ffff]/10">
-            <MetricBar label="Ω" value={metrics.omega} color="#00ffff" />
-            <MetricBar label="Ψ" value={metrics.psi} color="#a78bfa" />
-            <MetricBar label="K" value={metrics.k} color="#22c55e" />
-            <div className="ml-auto flex items-center gap-4 text-[#333]">
-              <span className="text-[#00ffff]/60">{metrics.nodes} <span className="text-[#333]">nodos</span></span>
-              <span className="text-[#a78bfa]/60">{metrics.connections} <span className="text-[#333]">conexiones</span></span>
-              <span className="text-[#22c55e]/60">{metrics.sessions} <span className="text-[#333]">sesiones</span></span>
-              <span className="text-[#ff003c]/60">LEY 4105</span>
-            </div>
+        <div className="absolute bottom-0 left-0 right-0 font-mono text-[10px] tracking-wider">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 bg-[#060606]/90 border-t border-[#00ffff]/10">
+            <span className="text-[#00ffff]/70">Ω agentes: {telemetry.omega === null ? "N/D" : telemetry.omega.toFixed(3)}</span>
+            <span className="text-[#a78bfa]/70">Eventos / 5 min: {recentEventCount}</span>
+            <span className="text-[#22c55e]/70">Agentes activos: {telemetry.activeAgents}</span>
+            <span className="text-[#f59e0b]/70">Standby: {telemetry.standbyAgents}</span>
+            <span className="text-[#ff003c]/70">Fallidos: {telemetry.failedAgents}</span>
+            <span className="ml-auto text-[#444]">
+              {telemetry.loading ? "Cargando telemetría…" : "Telemetría real · Canvas conceptual"}
+            </span>
           </div>
         </div>
       </div>
@@ -513,14 +543,3 @@ export default function Neural() {
   );
 }
 
-function MetricBar({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span style={{ color }} className="w-4">{label}</span>
-      <div className="w-24 h-1 bg-[#111] rounded-full overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${value * 100}%`, background: color, boxShadow: `0 0 4px ${color}` }} />
-      </div>
-      <span className="text-[#444]">{value.toFixed(2)}</span>
-    </div>
-  );
-}

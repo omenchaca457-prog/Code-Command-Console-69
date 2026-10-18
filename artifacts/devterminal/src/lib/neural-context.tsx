@@ -26,7 +26,9 @@ export function NeuralProvider({ children }: { children: ReactNode }) {
   const { data } = useListNeuralEvents({
     query: {
       queryKey: getListNeuralEventsQueryKey(),
-      refetchInterval: 5000,
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
     },
   });
   const createEvent = useCreateNeuralEvent();
