@@ -36,7 +36,7 @@ router.post("/neural-events", async (req, res): Promise<void> => {
     .insert(neuralEventsTable)
     .values(parsed.data)
     .returning();
-  publishNeuralEvent({
+  await publishNeuralEvent({
     id: created.id,
     origin: created.origin as "terminal" | "runner" | "agents",
     eventType: created.eventType,

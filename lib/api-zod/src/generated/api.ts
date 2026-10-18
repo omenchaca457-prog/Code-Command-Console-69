@@ -211,7 +211,7 @@ export const ClearTerminalMessagesResponse = zod.object({
  */
 export const deepseekChatBodyPromptMax = 8000;
 
-export const deepseekChatBodyContextMax = 30000;
+export const deepseekChatBodyContextMax = 60000;
 
 export const DeepseekChatBody = zod.object({
   prompt: zod.string().min(1).max(deepseekChatBodyPromptMax),
@@ -223,7 +223,7 @@ export const DeepseekChatBody = zod.object({
  */
 export const deepseekChatAliasBodyPromptMax = 8000;
 
-export const deepseekChatAliasBodyContextMax = 30000;
+export const deepseekChatAliasBodyContextMax = 60000;
 
 export const DeepseekChatAliasBody = zod.object({
   prompt: zod.string().min(1).max(deepseekChatAliasBodyPromptMax),

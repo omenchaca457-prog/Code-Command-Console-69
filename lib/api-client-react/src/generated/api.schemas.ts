@@ -205,7 +205,7 @@ export interface DeepSeekChatInput {
    */
   prompt: string;
   /**
-   * @maxLength 30000
+   * @maxLength 60000
    * @nullable
    */
   context?: string | null;

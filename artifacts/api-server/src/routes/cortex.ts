@@ -101,7 +101,7 @@ export function createCortexRouter() {
       );
       const savedEvent = rows[0];
       if (savedEvent) {
-        publishNeuralEvent({
+        await publishNeuralEvent({
           id: savedEvent.id,
           origin: savedEvent.origin,
           eventType: savedEvent.event_type,

@@ -210,7 +210,7 @@ Be direct, concise, and technically precise. Format code blocks with language ta
         eventType: breaker.remainingMs > 0 ? "cortex_recovery" : "agent_failed",
         content: `agent=${agentId}; consecutive_failures=${breaker.consecutiveFailures}; ${failure}`,
       }).returning();
-      publishNeuralEvent({
+      await publishNeuralEvent({
         id: neuralEvent.id,
         origin: "agents",
         eventType: neuralEvent.eventType,

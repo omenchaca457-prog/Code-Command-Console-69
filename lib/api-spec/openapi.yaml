@@ -642,7 +642,7 @@ components:
           maxLength: 8000
         context:
           type: ["string", "null"]
-          maxLength: 30000
+          maxLength: 60000
       required:
         - prompt
 
