@@ -42,6 +42,9 @@ export function getOpenAiFailureMessage(error: unknown): string {
   if (details.status === 403) {
     return "La cuenta de OpenAI no tiene permiso para usar GPT-4o.";
   }
+  if (details.code === "credit_balance_exhausted") {
+    return "La cuenta o proyecto de OpenAI agotó sus créditos. Revisa la facturación de OpenAI.";
+  }
   if (details.status === 429) {
     return "OpenAI alcanzó su límite de solicitudes. Inténtalo de nuevo más tarde.";
   }

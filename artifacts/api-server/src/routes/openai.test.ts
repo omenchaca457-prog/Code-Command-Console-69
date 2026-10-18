@@ -20,6 +20,17 @@ describe("POST /openai/chat", () => {
     assert.doesNotMatch(message, /secret-not-for-display/);
   });
 
+  it("distinguishes exhausted OpenAI credits from a temporary rate limit", () => {
+    assert.equal(
+      getOpenAiFailureMessage({ status: 429, code: "credit_balance_exhausted" }),
+      "La cuenta o proyecto de OpenAI agotó sus créditos. Revisa la facturación de OpenAI.",
+    );
+    assert.equal(
+      getOpenAiFailureMessage({ status: 429, code: "rate_limit_exceeded" }),
+      "OpenAI alcanzó su límite de solicitudes. Inténtalo de nuevo más tarde.",
+    );
+  });
+
   it("streams the final decision and records the OpenAI-Master neural event", async () => {
     let stateRead = false;
     let recordedDecision = "";
