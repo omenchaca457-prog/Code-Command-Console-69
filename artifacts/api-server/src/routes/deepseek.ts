@@ -9,7 +9,7 @@ import {
 import { executeDeepseekTool } from "./deepseek-tools";
 
 const router = Router();
-const MAX_TOOL_ROUNDS = 5;
+const MAX_TOOL_ROUNDS = 10;
 const MAX_TOOL_CALLS = 10;
 
 const DEEPSEEK_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
@@ -187,7 +187,7 @@ const handleDeepseekChat = async (
       if (completed) break;
       if (round === MAX_TOOL_ROUNDS - 1) {
         res.write(
-          `data: ${JSON.stringify({ error: "Se alcanzó el límite de rondas de herramientas." })}\n\n`,
+          `data: ${JSON.stringify({ error: "He alcanzado mi límite de análisis, por favor dame instrucciones más específicas." })}\n\n`,
         );
         completed = true;
       }

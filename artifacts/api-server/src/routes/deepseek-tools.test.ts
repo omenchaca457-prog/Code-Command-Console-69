@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   readProjectCode,
+  validateDeepseekToolArguments,
   validateExecuteSqlQuery,
 } from "./deepseek-tool-safety.ts";
 
@@ -13,8 +14,10 @@ describe("DeepSeek tool permissions", () => {
     );
   });
 
-  it("rejects writes, multiple statements, and non-application tables", () => {
+  it("rejects DROP, DELETE, UPDATE, multiple statements, and non-application tables", () => {
+    assert.throws(() => validateExecuteSqlQuery("DROP TABLE agents"));
     assert.throws(() => validateExecuteSqlQuery("DELETE FROM agents"));
+    assert.throws(() => validateExecuteSqlQuery("UPDATE agents SET xp = 0"));
     assert.throws(() => validateExecuteSqlQuery("SELECT 1; SELECT 2"));
     assert.throws(() => validateExecuteSqlQuery("SELECT * FROM users"));
   });
@@ -26,5 +29,25 @@ describe("DeepSeek tool permissions", () => {
     assert.match(source, /DEEPSEEK_TOOLS/);
     await assert.rejects(() => readProjectCode("../../.env"));
     await assert.rejects(() => readProjectCode(".env"));
+    await assert.rejects(() => readProjectCode(".ENV"));
+  });
+
+  it("requires exact tool argument keys and rejects destructive queries", () => {
+    assert.throws(
+      () => validateDeepseekToolArguments("execute_sql", { query: "SELECT 1", authorized: true }),
+      /Argumentos inválidos/,
+    );
+    assert.throws(
+      () => validateDeepseekToolArguments("execute_sql", { query: "UPDATE agents SET xp = 0" }),
+      /solo permite una consulta SELECT/,
+    );
+    assert.throws(
+      () => validateDeepseekToolArguments("get_current_code", { path: "package.json", allowSensitive: true }),
+      /Argumentos inválidos/,
+    );
+    assert.throws(
+      () => validateDeepseekToolArguments("get_current_code", { path: ".ENV" }),
+      /relativa/,
+    );
   });
 });

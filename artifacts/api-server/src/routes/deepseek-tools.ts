@@ -1,6 +1,7 @@
 import { pool } from "@workspace/db";
 import {
   readProjectCode,
+  validateDeepseekToolArguments,
   validateExecuteSqlQuery,
 } from "./deepseek-tool-safety";
 const MAX_ROWS = 20;
@@ -38,13 +39,10 @@ export async function executeDeepseekTool(
   name: string,
   rawArguments: string,
 ): Promise<string> {
-  let args: Record<string, unknown>;
+  let args: Record<string, string>;
   try {
     const parsed: unknown = JSON.parse(rawArguments);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("Los argumentos deben ser un objeto JSON.");
-    }
-    args = parsed as Record<string, unknown>;
+    args = validateDeepseekToolArguments(name, parsed);
   } catch (error) {
     return JSON.stringify({
       error: error instanceof Error ? error.message : "Argumentos JSON inválidos.",
@@ -53,11 +51,9 @@ export async function executeDeepseekTool(
 
   try {
     if (name === "execute_sql") {
-      if (typeof args.query !== "string") throw new Error("Falta el argumento query.");
       return await executeSqlTool(args.query);
     }
     if (name === "get_current_code") {
-      if (typeof args.path !== "string") throw new Error("Falta el argumento path.");
       return JSON.stringify({
         path: args.path,
         content: await readProjectCode(args.path),

@@ -11,6 +11,38 @@ const ALLOWED_EXTENSIONS = new Set([
 ]);
 const BLOCKED_SEGMENTS = new Set([".git", "node_modules", "attached_assets", "dist", ".local"]);
 
+export function validateDeepseekToolArguments(
+  name: string,
+  value: unknown,
+): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Los argumentos deben ser un objeto JSON.");
+  }
+  const allowedKeys =
+    name === "execute_sql" ? ["query"] :
+    name === "get_current_code" ? ["path"] :
+    null;
+  if (!allowedKeys) throw new Error(`Herramienta no permitida: ${name}`);
+
+  const args = value as Record<string, unknown>;
+  const keys = Object.keys(args);
+  if (
+    keys.length !== allowedKeys.length ||
+    keys.some((key) => !allowedKeys.includes(key)) ||
+    allowedKeys.some((key) => !Object.hasOwn(args, key))
+  ) {
+    throw new Error(`Argumentos inválidos para ${name}.`);
+  }
+
+  const argument = args[allowedKeys[0]!];
+  if (typeof argument !== "string" || !argument.trim()) {
+    throw new Error(`El argumento ${allowedKeys[0]} debe ser texto no vacío.`);
+  }
+  if (name === "execute_sql") validateExecuteSqlQuery(argument);
+  else validateProjectCodePath(argument);
+  return args as Record<string, string>;
+}
+
 export function validateExecuteSqlQuery(query: string): string {
   const trimmed = query.trim();
   if (!trimmed || trimmed.length > MAX_QUERY_LENGTH) {
@@ -35,6 +67,23 @@ export function validateExecuteSqlQuery(query: string): string {
   return singleStatement;
 }
 
+function validateProjectCodePath(relativePath: string): void {
+  const segments = relativePath.split(/[\\/]/);
+  if (
+    relativePath.length > 300 ||
+    isAbsolute(relativePath) ||
+    segments.some((segment) =>
+      !segment ||
+      segment === "." ||
+      segment === ".." ||
+      BLOCKED_SEGMENTS.has(segment) ||
+      segment.toLowerCase().startsWith(".env"),
+    )
+  ) {
+    throw new Error("La ruta debe ser relativa y apuntar a un archivo de código del proyecto.");
+  }
+}
+
 async function findWorkspaceRoot(start = process.cwd()): Promise<string> {
   let current = resolve(start);
   for (let depth = 0; depth < 8; depth += 1) {
@@ -51,19 +100,7 @@ async function findWorkspaceRoot(start = process.cwd()): Promise<string> {
 }
 
 export async function readProjectCode(relativePath: string): Promise<string> {
-  if (
-    !relativePath ||
-    relativePath.length > 300 ||
-    isAbsolute(relativePath) ||
-    relativePath.split(/[\\/]/).some((segment) =>
-      !segment ||
-      segment === "." ||
-      segment === ".." ||
-      BLOCKED_SEGMENTS.has(segment),
-    )
-  ) {
-    throw new Error("La ruta debe ser relativa y apuntar a un archivo de código del proyecto.");
-  }
+  validateProjectCodePath(relativePath);
 
   const root = await findWorkspaceRoot();
   const target = await realpath(resolve(root, relativePath));
@@ -72,7 +109,7 @@ export async function readProjectCode(relativePath: string): Promise<string> {
     throw new Error("La ruta solicitada queda fuera del proyecto.");
   }
   const fileName = rel.split(sep).at(-1) ?? "";
-  if (fileName.startsWith(".env") || !ALLOWED_EXTENSIONS.has(extname(fileName).toLowerCase())) {
+  if (fileName.toLowerCase().startsWith(".env") || !ALLOWED_EXTENSIONS.has(extname(fileName).toLowerCase())) {
     throw new Error("No se permite leer archivos de configuración sensible o de tipo no compatible.");
   }
   const metadata = await stat(target);
