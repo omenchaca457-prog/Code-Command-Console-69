@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Zap, Plus, Square, RefreshCw, Send, ChevronRight, Activity } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppContext } from "@/lib/app-context";
+import { AgentRunLock } from "@/lib/agent-run-lock";
 import { useToast } from "@/hooks/use-toast";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
@@ -105,6 +106,9 @@ export default function Agents() {
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [autoEvolve, setAutoEvolve] = useState(false);
   const autoEvolveRef = useRef(false);
+  const agentsRef = useRef(agents);
+  agentsRef.current = agents;
+  const activeRunsRef = useRef(new AgentRunLock());
   const { currentCode, currentLanguage } = useAppContext();
   const { toast } = useToast();
   const evolveTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -143,6 +147,8 @@ export default function Agents() {
   }, []);
 
   const runAgent = useCallback(async (agent: Agent, task?: string) => {
+    if (!activeRunsRef.current.acquire(agent.id)) return;
+
     const code = currentCode || "(no hay código en el workspace)";
     const msg = task || globalTask || `Analiza el siguiente código ${currentLanguage}:\n\n${code.slice(0, 800)}`;
 
@@ -185,6 +191,8 @@ export default function Agents() {
         status: "error",
         messages: [...agent.messages, { role: "agent", content: "Error de conexión neural.", ts: Date.now() }]
       });
+    } finally {
+      activeRunsRef.current.release(agent.id);
     }
   }, [currentCode, currentLanguage, globalTask, updateAgent]);
 
@@ -200,30 +208,31 @@ export default function Agents() {
     if (autoEvolve) {
       evolveTimerRef.current = setInterval(() => {
         if (!autoEvolveRef.current) return;
-        setAgents(prev => {
-          const idle = prev.filter(a => a.status !== "thinking");
-          if (idle.length > 0) {
-            const a = idle[Math.floor(Math.random() * idle.length)];
-            // Build next task from previous agent output
-            const prevDone = prev.filter(p => p.status === "done" && p.messages.length > 0);
-            const prevMsg = prevDone.length > 0
-              ? prevDone[Math.floor(Math.random() * prevDone.length)].messages.slice(-1)[0]?.content?.slice(0, 300)
-              : undefined;
-            const evolveTasks = [
-              "Basándote en el análisis anterior, profundiza más. ¿Qué sigue?",
-              "Evoluciona el código. Propón la siguiente iteración.",
-              "Coherencia Ω: mide y ajusta el código para coherencia perfecta.",
-              "¿Qué agente debería actuar ahora y por qué? Razona.",
-              prevMsg ? `El agente anterior dijo: "${prevMsg.slice(0, 150)}". Continúa desde ahí.` : "Nuevo ciclo de análisis.",
-            ];
-            const task = evolveTasks[Math.floor(Math.random() * evolveTasks.length)];
-            if (evolveTimeoutRef.current) clearTimeout(evolveTimeoutRef.current);
-            evolveTimeoutRef.current = setTimeout(() => {
-              if (autoEvolveRef.current) void runAgent(a, task);
-            }, 0);
-          }
-          return prev;
-        });
+        const currentAgents = agentsRef.current;
+        const eligible = currentAgents.filter(
+          agent => agent.status !== "thinking" && !activeRunsRef.current.isActive(agent.id)
+        );
+        if (eligible.length === 0) return;
+
+        const agent = eligible[Math.floor(Math.random() * eligible.length)];
+        const prevDone = currentAgents.filter(
+          previous => previous.status === "done" && previous.messages.length > 0
+        );
+        const prevMsg = prevDone.length > 0
+          ? prevDone[Math.floor(Math.random() * prevDone.length)].messages.slice(-1)[0]?.content?.slice(0, 300)
+          : undefined;
+        const evolveTasks = [
+          "Basándote en el análisis anterior, profundiza más. ¿Qué sigue?",
+          "Evoluciona el código. Propón la siguiente iteración.",
+          "Coherencia Ω: mide y ajusta el código para coherencia perfecta.",
+          "¿Qué agente debería actuar ahora y por qué? Razona.",
+          prevMsg ? `El agente anterior dijo: "${prevMsg.slice(0, 150)}". Continúa desde ahí.` : "Nuevo ciclo de análisis.",
+        ];
+        const task = evolveTasks[Math.floor(Math.random() * evolveTasks.length)];
+        if (evolveTimeoutRef.current) clearTimeout(evolveTimeoutRef.current);
+        evolveTimeoutRef.current = setTimeout(() => {
+          if (autoEvolveRef.current) void runAgent(agent, task);
+        }, 0);
       }, 12000);
     } else {
       if (evolveTimerRef.current) clearInterval(evolveTimerRef.current);
