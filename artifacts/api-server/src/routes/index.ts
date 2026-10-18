@@ -10,6 +10,7 @@ import neuralEventsRouter from "./neural-events";
 import messagesRouter from "./messages";
 import diagnosticsRouter from "./diagnostics";
 import cortexRouter from "./cortex";
+import openAiRouter from "./openai";
 
 const router: IRouter = Router();
 
@@ -23,6 +24,7 @@ router.use(neuralEventsRouter);
 router.use(messagesRouter);
 router.use(diagnosticsRouter);
 router.use(cortexRouter);
+router.use(openAiRouter);
 router.use(autorunRouter);
 
 export default router;
