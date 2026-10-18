@@ -5,6 +5,7 @@ import {
   validateExecuteSqlQuery,
 } from "./deepseek-tool-safety";
 import { serializeSqlRows } from "./deepseek-serialization";
+import { getReplitIntegrationStatus } from "./deepseek-integrations";
 import { getRuntimeDiagnostics } from "../lib/runtime-diagnostics";
 import * as pty from "node-pty";
 const MAX_ROWS = 20;
@@ -56,7 +57,7 @@ async function getWorkspaceSnapshot(): Promise<string> {
       memoryBytes: process.memoryUsage().rss,
       envVariableNames: Object.keys(process.env).filter((key) => /^[A-Z][A-Z0-9_]*$/.test(key)).sort(),
     },
-    integrations: "El proceso de la aplicación no tiene acceso al estado del panel de integraciones de Replit.",
+    integrations: "Consulta get_integrations_status para ver el estado disponible, sin credenciales.",
   });
 }
 
@@ -146,10 +147,7 @@ export async function executeDeepseekTool(
       return JSON.stringify(serializeSqlRows(rows));
     }
     if (name === "get_integrations_status") {
-      return JSON.stringify({
-        status: "unavailable",
-        detail: "La aplicación no expone credenciales ni metadatos del gestor de integraciones de Replit.",
-      });
+      return JSON.stringify(await getReplitIntegrationStatus());
     }
     if (name === "run_safe_command") return await runSafeCommand(args.command);
     return JSON.stringify({ error: `Herramienta no permitida: ${name}` });

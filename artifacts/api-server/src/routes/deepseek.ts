@@ -81,7 +81,7 @@ const DEEPSEEK_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "get_integrations_status",
-      description: "Informa si la aplicación puede consultar el estado de integraciones; nunca revela credenciales.",
+      description: "Lista los nombres y estados de las integraciones conectadas a Replit, sin revelar credenciales.",
       parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
     },
   },
@@ -246,7 +246,7 @@ const handleDeepseekChat = async (
       `workspace/database/process: ${workspace.slice(0, 8000)}`,
       `server/webview logs: ${diagnostics.slice(-6000)}`,
       `library: ${library.slice(0, 6000)}`,
-      `integration status: ${integrations.slice(0, 1500)}`,
+      `integration status: ${integrations.slice(0, 12000)}`,
       `neural activity: ${neural.slice(0, 5000)}`,
     ].join("\n\n");
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
