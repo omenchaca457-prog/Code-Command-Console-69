@@ -16,7 +16,8 @@ type NeuralEventRow = {
 
 type PostgresNeuralEventTransportOptions = {
   pool: Pick<Pool, "connect" | "query">;
-  loadEvent: (eventId: number) => Promise<StreamedNeuralEvent | null>;
+  loadLatestEventId: () => Promise<number>;
+  loadEventsSince: (eventId: number) => Promise<StreamedNeuralEvent[]>;
   onEvent: (event: StreamedNeuralEvent) => void;
   instanceId?: string;
 };
@@ -29,6 +30,9 @@ export class PostgresNeuralEventTransport {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stopping = true;
   private remoteNotifications = Promise.resolve();
+  private recoveryPromise = Promise.resolve();
+  private lastProcessedEventId = 0;
+  private hasInitialCursor = false;
 
   constructor(options: PostgresNeuralEventTransportOptions) {
     this.options = options;
@@ -38,7 +42,12 @@ export class PostgresNeuralEventTransport {
   async start(): Promise<void> {
     if (!this.stopping && this.listener) return;
     this.stopping = false;
-    await this.connectListener();
+    try {
+      await this.connectListener();
+    } catch (error) {
+      logger.error({ err: error }, "No se pudo iniciar LISTEN para eventos neuronales; se reintentará");
+      this.scheduleReconnect();
+    }
   }
 
   async publish(eventId: number): Promise<void> {
@@ -74,6 +83,10 @@ export class PostgresNeuralEventTransport {
   }
 
   private async connectListener(): Promise<void> {
+    if (!this.hasInitialCursor) {
+      this.lastProcessedEventId = await this.options.loadLatestEventId();
+      this.hasInitialCursor = true;
+    }
     const client = await this.options.pool.connect();
     try {
       await client.query(`LISTEN ${CHANNEL}`);
@@ -105,6 +118,24 @@ export class PostgresNeuralEventTransport {
     client.on("notification", this.handleNotification);
     client.on("error", this.listenerFailure);
     client.on("end", this.listenerFailure);
+    this.recoveryPromise = this.replayMissedEvents();
+    try {
+      await this.recoveryPromise;
+    } catch (error) {
+      this.listenerFailure(error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
+  }
+
+  private async replayMissedEvents(): Promise<void> {
+    const missed = await this.options.loadEventsSince(this.lastProcessedEventId);
+    for (const event of missed) this.deliverIfNew(event);
+  }
+
+  private deliverIfNew(event: StreamedNeuralEvent): void {
+    if (event.id <= this.lastProcessedEventId) return;
+    this.options.onEvent(event);
+    this.lastProcessedEventId = event.id;
   }
 
   private readonly handleNotification = (message: {
@@ -114,6 +145,7 @@ export class PostgresNeuralEventTransport {
     if (message.channel !== CHANNEL || !message.payload) return;
 
     this.remoteNotifications = this.remoteNotifications
+      .then(() => this.recoveryPromise)
       .then(async () => {
         const notification = JSON.parse(message.payload!) as {
           source?: unknown;
@@ -129,8 +161,9 @@ export class PostgresNeuralEventTransport {
           return;
         }
 
-        const event = await this.options.loadEvent(notification.id);
-        if (event) this.options.onEvent(event);
+        if (notification.id <= this.lastProcessedEventId) return;
+        const events = await this.options.loadEventsSince(this.lastProcessedEventId);
+        for (const event of events) this.deliverIfNew(event);
       })
       .catch((error: unknown) => {
         logger.error({ err: error }, "No se pudo procesar un aviso de evento neuronal");
@@ -149,28 +182,37 @@ export class PostgresNeuralEventTransport {
   }
 }
 
-export function loadNeuralEventById(
+function mapNeuralEventRow(row: NeuralEventRow): StreamedNeuralEvent {
+  return {
+    id: Number(row.id),
+    origin: row.origin,
+    eventType: row.event_type,
+    content: row.content,
+    createdAt: row.created_at instanceof Date
+      ? row.created_at.toISOString()
+      : new Date(row.created_at).toISOString(),
+  };
+}
+
+export async function loadLatestNeuralEventId(
+  pool: Pick<Pool, "query">,
+): Promise<number> {
+  const { rows } = await pool.query<{ id: number | string | null }>(
+    "SELECT MAX(id) AS id FROM neural_events",
+  );
+  return Number(rows[0]?.id ?? 0);
+}
+
+export async function loadNeuralEventsSince(
   pool: Pick<Pool, "query">,
   eventId: number,
-): Promise<StreamedNeuralEvent | null> {
-  return pool
-    .query<NeuralEventRow>(
+): Promise<StreamedNeuralEvent[]> {
+  const { rows } = await pool.query<NeuralEventRow>(
       `SELECT id, origin, event_type, content, created_at
        FROM neural_events
-       WHERE id = $1`,
+       WHERE id > $1
+       ORDER BY id ASC`,
       [eventId],
-    )
-    .then(({ rows }) => {
-      const row = rows[0];
-      if (!row) return null;
-      return {
-        id: Number(row.id),
-        origin: row.origin,
-        eventType: row.event_type,
-        content: row.content,
-        createdAt: row.created_at instanceof Date
-          ? row.created_at.toISOString()
-          : new Date(row.created_at).toISOString(),
-      };
-    });
+  );
+  return rows.map(mapNeuralEventRow);
 }

@@ -8,7 +8,8 @@ import {
   publishRemoteNeuralEvent,
 } from "./routes/neural-event-bus.ts";
 import {
-  loadNeuralEventById,
+  loadLatestNeuralEventId,
+  loadNeuralEventsSince,
   PostgresNeuralEventTransport,
 } from "./routes/neural-event-postgres.ts";
 
@@ -32,7 +33,8 @@ const terminalWss = attachTerminalWS(server);
 
 const neuralEventTransport = new PostgresNeuralEventTransport({
   pool,
-  loadEvent: (eventId) => loadNeuralEventById(pool, eventId),
+  loadLatestEventId: () => loadLatestNeuralEventId(pool),
+  loadEventsSince: (eventId) => loadNeuralEventsSince(pool, eventId),
   onEvent: publishRemoteNeuralEvent,
 });
 configureNeuralEventNotifier((eventId) => neuralEventTransport.publish(eventId));

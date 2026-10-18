@@ -125,6 +125,16 @@ class FakeSharedPostgres {
   async loadEvent(eventId: number): Promise<StreamedNeuralEvent | null> {
     return this.rows.get(eventId) ?? null;
   }
+
+  async loadLatestEventId(): Promise<number> {
+    return Math.max(0, ...this.rows.keys());
+  }
+
+  async loadEventsSince(eventId: number): Promise<StreamedNeuralEvent[]> {
+    return [...this.rows.values()]
+      .filter((item) => item.id > eventId)
+      .sort((left, right) => left.id - right.id);
+  }
 }
 
 describe("GET /api/neural-events/stream", () => {
@@ -178,13 +188,15 @@ describe("GET /api/neural-events/stream", () => {
     const readerHub = new NeuralEventHub();
     const writer = new PostgresNeuralEventTransport({
       pool: postgres.pool,
-      loadEvent: (id) => postgres.loadEvent(id),
+      loadLatestEventId: () => postgres.loadLatestEventId(),
+      loadEventsSince: (id) => postgres.loadEventsSince(id),
       onEvent: (item) => readerHub.publish(item),
       instanceId: "writer-instance",
     });
     const reader = new PostgresNeuralEventTransport({
       pool: postgres.pool,
-      loadEvent: (id) => postgres.loadEvent(id),
+      loadLatestEventId: () => postgres.loadLatestEventId(),
+      loadEventsSince: (id) => postgres.loadEventsSince(id),
       onEvent: (item) => readerHub.publish(item),
       instanceId: "reader-instance",
     });
