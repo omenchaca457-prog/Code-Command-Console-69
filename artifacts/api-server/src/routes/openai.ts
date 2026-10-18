@@ -10,7 +10,7 @@ const SYSTEM_PROMPT =
   "y emite una orden final concreta, breve y accionable para coordinar el enjambre. " +
   "No inventes estados ni resultados.";
 const getConfiguredOpenAiKey = () =>
-  process.env.chatgpt || process.env.OPENAI_API_KEY || process.env.openIA;
+  process.env.OPENAI_API_KEY || process.env.chatgpt || process.env.openIA;
 
 type AgentState = {
   id: string;

@@ -86,6 +86,8 @@ type OpenAiAgentResult = {
   error?: string;
 };
 
+type NeuralEventDeliveryStatus = "delivered" | "persisted_only" | "persistence_failed";
+
 async function readOpenAiStream(
   prompt: string,
   agentResults: OpenAiAgentResult[],
@@ -105,7 +107,7 @@ async function readOpenAiStream(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let eventStatus = "delivered";
+  let eventStatus: NeuralEventDeliveryStatus | null = null;
   let complete = false;
   const consume = (frame: string) => {
     const data = frame.split(/\r?\n/)
@@ -117,14 +119,17 @@ async function readOpenAiStream(
       type?: string;
       content?: string;
       error?: string;
-      eventStatus?: string;
+      eventStatus?: NeuralEventDeliveryStatus;
     };
     if (payload.type === "error" || payload.error) {
       throw new Error(payload.error || "OpenAI no pudo completar la orden.");
     }
     if (payload.type === "delta" && payload.content) onDelta(payload.content);
     if (payload.type === "done") {
-      eventStatus = payload.eventStatus || "delivered";
+      if (!["delivered", "persisted_only", "persistence_failed"].includes(payload.eventStatus ?? "")) {
+        throw new Error("OpenAI no confirmó el estado de difusión del evento neural.");
+      }
+      eventStatus = payload.eventStatus!;
       complete = true;
     }
   };
@@ -142,7 +147,7 @@ async function readOpenAiStream(
   }
   buffer += decoder.decode();
   if (!complete && buffer.trim()) consume(buffer);
-  if (!complete) throw new Error("El flujo de OpenAI se interrumpió antes de confirmar la orden.");
+  if (!complete || !eventStatus) throw new Error("El flujo de OpenAI se interrumpió antes de confirmar la orden.");
   return eventStatus;
 }
 
@@ -245,6 +250,7 @@ export default function Cortex() {
   const [deepseek, setDeepseek] = useState<ProviderState>(initialProviderState);
   const [gemini, setGemini] = useState<ProviderState>(initialProviderState);
   const [openai, setOpenai] = useState<ProviderState>(initialProviderState);
+  const [eventDeliveryStatus, setEventDeliveryStatus] = useState<NeuralEventDeliveryStatus | null>(null);
   const [collecting, setCollecting] = useState(false);
   const [contextSources, setContextSources] = useState<string[]>([]);
   const [learningCount, setLearningCount] = useState(0);
@@ -258,6 +264,7 @@ export default function Cortex() {
     setDeepseek({ response: "", loading: true, error: "" });
     setGemini({ response: "", loading: true, error: "" });
     setOpenai({ response: "", loading: false, error: "" });
+    setEventDeliveryStatus(null);
 
     let deepseekText = "";
     let geminiText = "";
@@ -330,6 +337,7 @@ export default function Cortex() {
           openaiText += delta;
           setOpenai((current) => ({ ...current, response: current.response + delta }));
         });
+        setEventDeliveryStatus(eventStatus);
         setOpenai((current) => ({
           ...current,
           loading: false,
@@ -419,6 +427,24 @@ export default function Cortex() {
           <ResponsePanel provider="Gemini" tagline="Investigación y contexto" accent="cyan" icon={Search} state={gemini} onCopy={() => void navigator.clipboard.writeText(gemini.response)} />
           <ResponsePanel provider="OpenAI · GPT-4o" tagline="Orquestador · sintetiza y ordena a los agentes" accent="violet" icon={BrainCircuit} state={openai} onCopy={() => void navigator.clipboard.writeText(openai.response)} />
         </div>
+        {eventDeliveryStatus && (
+          <p
+            role="status"
+            className={`mt-3 border px-3 py-2 font-mono text-[10px] leading-5 ${
+              eventDeliveryStatus === "delivered"
+                ? "border-[#00ff41]/20 bg-[#00ff41]/[0.035] text-[#83c991]"
+                : eventDeliveryStatus === "persisted_only"
+                  ? "border-[#ffcf5c]/20 bg-[#ffcf5c]/[0.035] text-[#e5c779]"
+                  : "border-[#ff4562]/20 bg-[#ff4562]/[0.05] text-[#ff8798]"
+            }`}
+          >
+            {eventDeliveryStatus === "delivered"
+              ? "Evento neural OpenAI-Master difundido en vivo."
+              : eventDeliveryStatus === "persisted_only"
+                ? "Evento neural guardado; difusión en vivo pendiente de reconexión."
+                : "La orden final está lista, pero el evento neural no se pudo guardar."}
+          </p>
+        )}
 
         <form
           className="mt-4 border border-[#00ff41]/25 bg-[#060908] shadow-[0_0_24px_rgba(0,255,65,0.035)]"
