@@ -2,6 +2,10 @@ import { useState } from "react";
 import { ArrowUpRight, BrainCircuit, Code2, Copy, Database, LoaderCircle, Search, Send, X } from "lucide-react";
 import { useAppContext } from "@/lib/app-context";
 import { useNeuralContext } from "@/lib/neural-context";
+import {
+  getNeuralEventDeliveryPresentation,
+  type NeuralEventDeliveryStatus,
+} from "@/lib/cortex-event-delivery";
 
 type ProviderState = {
   response: string;
@@ -85,8 +89,6 @@ type OpenAiAgentResult = {
   response: string;
   error?: string;
 };
-
-type NeuralEventDeliveryStatus = "delivered" | "persisted_only" | "persistence_failed";
 
 async function readOpenAiStream(
   prompt: string,
@@ -430,19 +432,9 @@ export default function Cortex() {
         {eventDeliveryStatus && (
           <p
             role="status"
-            className={`mt-3 border px-3 py-2 font-mono text-[10px] leading-5 ${
-              eventDeliveryStatus === "delivered"
-                ? "border-[#00ff41]/20 bg-[#00ff41]/[0.035] text-[#83c991]"
-                : eventDeliveryStatus === "persisted_only"
-                  ? "border-[#ffcf5c]/20 bg-[#ffcf5c]/[0.035] text-[#e5c779]"
-                  : "border-[#ff4562]/20 bg-[#ff4562]/[0.05] text-[#ff8798]"
-            }`}
+            className={`mt-3 border px-3 py-2 font-mono text-[10px] leading-5 ${getNeuralEventDeliveryPresentation(eventDeliveryStatus).className}`}
           >
-            {eventDeliveryStatus === "delivered"
-              ? "Evento neural OpenAI-Master difundido en vivo."
-              : eventDeliveryStatus === "persisted_only"
-                ? "Evento neural guardado; difusión en vivo pendiente de reconexión."
-                : "La orden final está lista, pero el evento neural no se pudo guardar."}
+            {getNeuralEventDeliveryPresentation(eventDeliveryStatus).message}
           </p>
         )}
 
