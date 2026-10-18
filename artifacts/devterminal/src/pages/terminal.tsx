@@ -236,7 +236,11 @@ export default function TerminalPage() {
       await consumeDeepseekStream(response.body, controller.signal, (delta) =>
         typeResponse(term, delta, controller.signal),
       );
-      if (!controller.signal.aborted) writeSafeText(term, "\n\n");
+      if (controller.signal.aborted) {
+        writeSafeText(term, "\n[Consulta detenida]\n");
+      } else {
+        writeSafeText(term, "\n\n");
+      }
     } catch (error) {
       if (controller.signal.aborted) {
         writeSafeText(term, "\n[Consulta detenida]\n");
