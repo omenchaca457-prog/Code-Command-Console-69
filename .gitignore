@@ -31,8 +31,6 @@ node_modules
 /.sass-cache
 /connect.lock
 /coverage
-/artifacts/devterminal/test-results/
-/artifacts/devterminal/playwright-report/
 /libpeerconnection.log
 npm-debug.log
 yarn-error.log
