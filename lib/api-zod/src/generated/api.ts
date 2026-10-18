@@ -154,6 +154,47 @@ export const GetAgentsResponseItem = zod.object({
 export const GetAgentsResponse = zod.array(GetAgentsResponseItem);
 
 /**
+ * @summary Obtener historial persistente de la terminal
+ */
+export const GetTerminalMessagesQueryParams = zod.object({
+  conversation_id: zod.enum(["terminal_main_session"]),
+});
+
+export const GetTerminalMessagesResponseItem = zod.object({
+  id: zod.number(),
+  conversationId: zod.number(),
+  role: zod.enum(["user", "assistant"]),
+  content: zod.string(),
+  createdAt: zod.coerce.date(),
+});
+export const GetTerminalMessagesResponse = zod.array(
+  GetTerminalMessagesResponseItem,
+);
+
+/**
+ * @summary Guardar un mensaje de la terminal
+ */
+export const saveTerminalMessageBodyContentMax = 30000;
+
+export const SaveTerminalMessageBody = zod.object({
+  conversation_id: zod.enum(["terminal_main_session"]),
+  role: zod.enum(["user", "assistant"]),
+  content: zod.string().min(1).max(saveTerminalMessageBodyContentMax),
+});
+
+/**
+ * @summary Borrar el historial de la sesión fija de la terminal
+ */
+export const ClearTerminalMessagesQueryParams = zod.object({
+  conversation_id: zod.enum(["terminal_main_session"]),
+});
+
+export const ClearTerminalMessagesResponse = zod.object({
+  conversationId: zod.string(),
+  deletedCount: zod.number(),
+});
+
+/**
  * @summary Consultar DeepSeek con respuesta en streaming SSE
  */
 export const deepseekChatBodyPromptMax = 8000;

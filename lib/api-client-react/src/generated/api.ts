@@ -23,15 +23,20 @@ import type {
   AiCodeResponse,
   AiExplainRequest,
   AiImproveRequest,
+  ClearTerminalMessagesParams,
+  ClearTerminalMessagesResponse,
   CreateSnippetBody,
   DeepSeekChatInput,
   ExecuteRequest,
   ExecuteResult,
+  GetTerminalMessagesParams,
   HealthStatus,
   LanguageList,
   NeuralEvent,
   NeuralEventInput,
   Snippet,
+  TerminalMessage,
+  TerminalMessageInput,
   UpdateSnippetBody,
 } from "./api.schemas";
 
@@ -829,6 +834,293 @@ export function useGetAgents<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Obtener historial persistente de la terminal
+ */
+export const getGetTerminalMessagesUrl = (
+  params: GetTerminalMessagesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/messages?${stringifiedParams}`
+    : `/api/messages`;
+};
+
+export const getTerminalMessages = async (
+  params: GetTerminalMessagesParams,
+  options?: RequestInit,
+): Promise<TerminalMessage[]> => {
+  return customFetch<TerminalMessage[]>(getGetTerminalMessagesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTerminalMessagesQueryKey = (
+  params?: GetTerminalMessagesParams,
+) => {
+  return [`/api/messages`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetTerminalMessagesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTerminalMessages>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetTerminalMessagesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTerminalMessages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetTerminalMessagesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTerminalMessages>>
+  > = ({ signal }) =>
+    getTerminalMessages(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTerminalMessages>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTerminalMessagesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTerminalMessages>>
+>;
+export type GetTerminalMessagesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Obtener historial persistente de la terminal
+ */
+
+export function useGetTerminalMessages<
+  TData = Awaited<ReturnType<typeof getTerminalMessages>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetTerminalMessagesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTerminalMessages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTerminalMessagesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Guardar un mensaje de la terminal
+ */
+export const getSaveTerminalMessageUrl = () => {
+  return `/api/messages`;
+};
+
+export const saveTerminalMessage = async (
+  terminalMessageInput: TerminalMessageInput,
+  options?: RequestInit,
+): Promise<TerminalMessage> => {
+  return customFetch<TerminalMessage>(getSaveTerminalMessageUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(terminalMessageInput),
+  });
+};
+
+export const getSaveTerminalMessageMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof saveTerminalMessage>>,
+    TError,
+    { data: BodyType<TerminalMessageInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof saveTerminalMessage>>,
+  TError,
+  { data: BodyType<TerminalMessageInput> },
+  TContext
+> => {
+  const mutationKey = ["saveTerminalMessage"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof saveTerminalMessage>>,
+    { data: BodyType<TerminalMessageInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return saveTerminalMessage(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SaveTerminalMessageMutationResult = NonNullable<
+  Awaited<ReturnType<typeof saveTerminalMessage>>
+>;
+export type SaveTerminalMessageMutationBody = BodyType<TerminalMessageInput>;
+export type SaveTerminalMessageMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Guardar un mensaje de la terminal
+ */
+export const useSaveTerminalMessage = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof saveTerminalMessage>>,
+    TError,
+    { data: BodyType<TerminalMessageInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof saveTerminalMessage>>,
+  TError,
+  { data: BodyType<TerminalMessageInput> },
+  TContext
+> => {
+  return useMutation(getSaveTerminalMessageMutationOptions(options));
+};
+
+/**
+ * @summary Borrar el historial de la sesión fija de la terminal
+ */
+export const getClearTerminalMessagesUrl = (
+  params: ClearTerminalMessagesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/messages?${stringifiedParams}`
+    : `/api/messages`;
+};
+
+export const clearTerminalMessages = async (
+  params: ClearTerminalMessagesParams,
+  options?: RequestInit,
+): Promise<ClearTerminalMessagesResponse> => {
+  return customFetch<ClearTerminalMessagesResponse>(
+    getClearTerminalMessagesUrl(params),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getClearTerminalMessagesMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearTerminalMessages>>,
+    TError,
+    { params: ClearTerminalMessagesParams },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof clearTerminalMessages>>,
+  TError,
+  { params: ClearTerminalMessagesParams },
+  TContext
+> => {
+  const mutationKey = ["clearTerminalMessages"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof clearTerminalMessages>>,
+    { params: ClearTerminalMessagesParams }
+  > = (props) => {
+    const { params } = props ?? {};
+
+    return clearTerminalMessages(params, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClearTerminalMessagesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof clearTerminalMessages>>
+>;
+
+export type ClearTerminalMessagesMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Borrar el historial de la sesión fija de la terminal
+ */
+export const useClearTerminalMessages = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearTerminalMessages>>,
+    TError,
+    { params: ClearTerminalMessagesParams },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof clearTerminalMessages>>,
+  TError,
+  { params: ClearTerminalMessagesParams },
+  TContext
+> => {
+  return useMutation(getClearTerminalMessagesMutationOptions(options));
+};
 
 /**
  * @summary Consultar DeepSeek con respuesta en streaming SSE

@@ -4,13 +4,33 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { SearchAddon } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
-import { TerminalSquare, Wifi, WifiOff, RotateCcw, Maximize2, Minimize2, Search, X } from "lucide-react";
+import { TerminalSquare, Wifi, WifiOff, RotateCcw, Maximize2, Minimize2, Search, X, Trash2 } from "lucide-react";
 import { useAppContext } from "@/lib/app-context";
 import { useNeuralContext } from "@/lib/neural-context";
 
 const BASE_HOST = window.location.host;
 const WS_PROTOCOL = window.location.protocol === "https:" ? "wss:" : "ws:";
 const WS_URL = `${WS_PROTOCOL}//${BASE_HOST}/api/terminal/ws`;
+const TERMINAL_CONVERSATION_ID = "terminal_main_session";
+
+type TerminalHistoryMessage = {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+};
+
+async function persistTerminalMessage(role: "user" | "assistant", content: string) {
+  const response = await fetch("/api/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversation_id: TERMINAL_CONVERSATION_ID, role, content }),
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => null) as { error?: string } | null;
+    throw new Error(result?.error || "No se pudo guardar el historial de la terminal.");
+  }
+}
 
 function removeTerminalControls(value: string) {
   return value.replace(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g, "");
@@ -51,6 +71,7 @@ export default function TerminalPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [smartCommand, setSmartCommand] = useState("");
   const [isDeepSeekThinking, setIsDeepSeekThinking] = useState(false);
+  const [isClearingChat, setIsClearingChat] = useState(false);
 
   useEffect(() => {
     recordEventRef.current = recordEvent;
@@ -60,6 +81,34 @@ export default function TerminalPage() {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ resize: true, cols: term.cols, rows: term.rows }));
     }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`/api/messages?conversation_id=${TERMINAL_CONVERSATION_ID}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("No se pudo recuperar el historial.");
+        return await response.json() as TerminalHistoryMessage[];
+      })
+      .then((messages) => {
+        const term = termRef.current;
+        if (!term || controller.signal.aborted || messages.length === 0) return;
+        writeSafeText(term, "\n[Historial de terminal recuperado]\n");
+        for (const message of messages) {
+          const speaker = message.role === "user" ? "Arquitecto" : "SQ-AI";
+          writeSafeText(term, `${speaker}> ${message.content}\n\n`);
+        }
+        writeSafeText(term, "[Fin del historial]\n\n");
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted && termRef.current) {
+          const message = error instanceof Error ? error.message : "Error de conexión.";
+          writeSafeText(termRef.current, `\n[Historial] ${message}\n`);
+        }
+      });
+    return () => controller.abort();
   }, []);
 
   const connect = useCallback(() => {
@@ -258,6 +307,7 @@ export default function TerminalPage() {
     writeSafeText(term, `\nSQ-AI> ${prompt}\n`);
 
     try {
+      await persistTerminalMessage("user", prompt);
       const context = [
         `Lenguaje del editor: ${currentLanguage}`,
         "Código abierto del editor:",
@@ -279,6 +329,7 @@ export default function TerminalPage() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let assistantResponse = "";
 
       const processFrame = async (frame: string) => {
         const data = frame
@@ -291,6 +342,7 @@ export default function TerminalPage() {
         const payload = JSON.parse(data) as { delta?: string; error?: string };
         if (payload.error) throw new Error(payload.error);
         if (typeof payload.delta === "string") {
+          assistantResponse += payload.delta;
           await typeResponse(term, payload.delta, controller.signal);
         }
       };
@@ -309,7 +361,12 @@ export default function TerminalPage() {
 
       buffer += decoder.decode();
       if (buffer.trim()) await processFrame(buffer);
-      if (!controller.signal.aborted) writeSafeText(term, "\n\n");
+      if (!controller.signal.aborted) {
+        if (assistantResponse.trim()) {
+          await persistTerminalMessage("assistant", assistantResponse);
+        }
+        writeSafeText(term, "\n\n");
+      }
     } catch (error) {
       if (controller.signal.aborted) {
         writeSafeText(term, "\n[Consulta detenida]\n");
@@ -331,6 +388,28 @@ export default function TerminalPage() {
       termRef.current.write("\x1b[38;5;240m[Reconnecting...]\x1b[0m\r\n");
     }
     connect();
+  };
+
+  const handleClearChat = async () => {
+    if (isClearingChat || isDeepSeekThinking) return;
+    setIsClearingChat(true);
+    try {
+      const response = await fetch(
+        `/api/messages?conversation_id=${TERMINAL_CONVERSATION_ID}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) {
+        const result = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(result?.error || "No se pudo limpiar el historial.");
+      }
+      termRef.current?.clear();
+      if (termRef.current) writeSafeText(termRef.current, "[Historial de chat limpiado]\n");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error de conexión.";
+      if (termRef.current) writeSafeText(termRef.current, `\n[Error] ${message}\n`);
+    } finally {
+      setIsClearingChat(false);
+    }
   };
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -397,6 +476,16 @@ export default function TerminalPage() {
               <button onClick={() => searchRef.current?.findPrevious(searchQuery)} className="font-mono text-[9px] text-[#444] px-1.5 py-1 border border-[#1a1a1a] hover:text-[#888] hover:border-[#333]">↑</button>
             </div>
           )}
+          <button
+            type="button"
+            onClick={handleClearChat}
+            disabled={isClearingChat || isDeepSeekThinking}
+            className="flex items-center gap-1 border border-[#ff003c]/20 px-2 py-1 font-mono text-[9px] tracking-widest text-[#ff6680] hover:bg-[#ff003c]/10 disabled:opacity-40"
+            aria-label="Limpiar Chat"
+          >
+            <Trash2 className="h-3 w-3" />
+            <span>{isClearingChat ? "LIMPIANDO…" : "LIMPIAR CHAT"}</span>
+          </button>
           <button onClick={() => setShowSearch(v => !v)} className={`p-1.5 border transition-colors ${showSearch ? "border-[#ff003c]/30 text-[#ff003c]/60" : "border-transparent text-[#333] hover:text-[#666] hover:border-[#222]"}`}>
             <Search className="h-3 w-3" />
           </button>

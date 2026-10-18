@@ -177,6 +177,63 @@ paths:
                 items:
                   $ref: "#/components/schemas/AgentProgress"
 
+  /messages:
+    get:
+      operationId: getTerminalMessages
+      tags: [terminal]
+      summary: Obtener historial persistente de la terminal
+      parameters:
+        - name: conversation_id
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [terminal_main_session]
+      responses:
+        "200":
+          description: Mensajes ordenados desde el más antiguo
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TerminalMessage"
+    post:
+      operationId: saveTerminalMessage
+      tags: [terminal]
+      summary: Guardar un mensaje de la terminal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TerminalMessageInput"
+      responses:
+        "201":
+          description: Mensaje guardado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TerminalMessage"
+    delete:
+      operationId: clearTerminalMessages
+      tags: [terminal]
+      summary: Borrar el historial de la sesión fija de la terminal
+      parameters:
+        - name: conversation_id
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [terminal_main_session]
+      responses:
+        "200":
+          description: Historial eliminado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClearTerminalMessagesResponse"
+
   /deepseek/chat:
     post:
       operationId: deepseekChat
@@ -598,3 +655,44 @@ components:
           type: string
       required:
         - result
+
+    TerminalMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        conversationId:
+          type: integer
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, conversationId, role, content, createdAt]
+
+    TerminalMessageInput:
+      type: object
+      properties:
+        conversation_id:
+          type: string
+          enum: [terminal_main_session]
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 30000
+      required: [conversation_id, role, content]
+
+    ClearTerminalMessagesResponse:
+      type: object
+      properties:
+        conversationId:
+          type: string
+        deletedCount:
+          type: integer
+      required: [conversationId, deletedCount]

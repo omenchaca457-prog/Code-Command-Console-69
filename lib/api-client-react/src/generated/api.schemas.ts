@@ -188,3 +188,71 @@ export interface AiImproveRequest {
 export interface AiCodeResponse {
   result: string;
 }
+
+export type TerminalMessageRole =
+  (typeof TerminalMessageRole)[keyof typeof TerminalMessageRole];
+
+export const TerminalMessageRole = {
+  user: "user",
+  assistant: "assistant",
+} as const;
+
+export interface TerminalMessage {
+  id: number;
+  conversationId: number;
+  role: TerminalMessageRole;
+  content: string;
+  createdAt: string;
+}
+
+export type TerminalMessageInputConversationId =
+  (typeof TerminalMessageInputConversationId)[keyof typeof TerminalMessageInputConversationId];
+
+export const TerminalMessageInputConversationId = {
+  terminal_main_session: "terminal_main_session",
+} as const;
+
+export type TerminalMessageInputRole =
+  (typeof TerminalMessageInputRole)[keyof typeof TerminalMessageInputRole];
+
+export const TerminalMessageInputRole = {
+  user: "user",
+  assistant: "assistant",
+} as const;
+
+export interface TerminalMessageInput {
+  conversation_id: TerminalMessageInputConversationId;
+  role: TerminalMessageInputRole;
+  /**
+   * @minLength 1
+   * @maxLength 30000
+   */
+  content: string;
+}
+
+export interface ClearTerminalMessagesResponse {
+  conversationId: string;
+  deletedCount: number;
+}
+
+export type GetTerminalMessagesParams = {
+  conversation_id: GetTerminalMessagesConversationId;
+};
+
+export type GetTerminalMessagesConversationId =
+  (typeof GetTerminalMessagesConversationId)[keyof typeof GetTerminalMessagesConversationId];
+
+export const GetTerminalMessagesConversationId = {
+  terminal_main_session: "terminal_main_session",
+} as const;
+
+export type ClearTerminalMessagesParams = {
+  conversation_id: ClearTerminalMessagesConversationId;
+};
+
+export type ClearTerminalMessagesConversationId =
+  (typeof ClearTerminalMessagesConversationId)[keyof typeof ClearTerminalMessagesConversationId];
+
+export const ClearTerminalMessagesConversationId = {
+  terminal_main_session: "terminal_main_session",
+} as const;
