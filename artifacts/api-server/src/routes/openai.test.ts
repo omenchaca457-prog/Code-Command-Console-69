@@ -123,6 +123,53 @@ describe("POST /openai/chat", () => {
     }
   });
 
+  it("returns a final order when both analysis agents fail", async () => {
+    const failedAgents = [
+      { agent: "DeepSeek", status: "failed", response: "", error: "Proveedor no disponible." },
+      { agent: "Gemini", status: "failed", response: "", error: "Tiempo de espera agotado." },
+    ];
+    let persistedDecision = "";
+    const router = createOpenAiRouter({
+      getApiKey: () => "test-key",
+      loadAgentStates: async () => [],
+      streamCompletion: async function* ({ agentResults }) {
+        assert.deepEqual(agentResults, failedAgents);
+        yield { choices: [{ delta: { content: "Orden de contingencia: reintentar con contexto mínimo." } }] };
+      },
+      persistAndPublishDecision: async (decision) => {
+        persistedDecision = decision;
+        return "delivered";
+      },
+    });
+    const app = express();
+    app.use(express.json());
+    app.use(router);
+    const server = createServer(app);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/openai/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: "Coordina aunque fallen los dos agentes",
+          agentResults: failedAgents,
+        }),
+      });
+      assert.equal(response.status, 200);
+      const body = await response.text();
+      assert.match(body, /"content":"Orden de contingencia: reintentar con contexto mínimo\."/);
+      assert.match(body, /"agent":"ORQUESTADOR-OPENAI","node":"OpenAI-Master","eventStatus":"delivered"/);
+      assert.equal(persistedDecision, "Orden de contingencia: reintentar con contexto mínimo.");
+    } finally {
+      server.closeAllConnections();
+      server.close();
+      await once(server, "close");
+    }
+  });
+
   it("keeps the final decision visible when neural-event persistence fails", async () => {
     const router = createOpenAiRouter({
       getApiKey: () => "test-key",
