@@ -1,18 +1,18 @@
-import { db, neuralEventsTable, pool } from "@workspace/db";
 import {
   readProjectCode,
   validateDeepseekToolArguments,
   validateExecuteSqlQuery,
   writeProjectCode,
-} from "./deepseek-tool-safety";
-import { serializeSqlRows } from "./deepseek-serialization";
-import { getReplitIntegrationStatus } from "./deepseek-integrations";
-import { getRuntimeDiagnostics } from "../lib/runtime-diagnostics";
+} from "./deepseek-tool-safety.ts";
+import { serializeSqlRows } from "./deepseek-serialization.ts";
+import { getReplitIntegrationStatus } from "./deepseek-integrations.ts";
+import { getRuntimeDiagnostics } from "../lib/runtime-diagnostics.ts";
 import * as pty from "node-pty";
-import { publishNeuralEvent } from "./neural-event-bus";
+import { publishNeuralEvent } from "./neural-event-bus.ts";
 const MAX_ROWS = 20;
 
 export async function executeSqlTool(query: string): Promise<string> {
+  const { pool } = await import("@workspace/db");
   const safeQuery = validateExecuteSqlQuery(query);
   const client = await pool.connect();
   try {
@@ -34,6 +34,7 @@ export async function executeSqlTool(query: string): Promise<string> {
 }
 
 async function getNeuralActivity(): Promise<string> {
+  const { pool } = await import("@workspace/db");
   const { rows } = await pool.query(`
     SELECT id, origin, event_type, content, created_at
     FROM neural_events
@@ -44,6 +45,7 @@ async function getNeuralActivity(): Promise<string> {
 }
 
 async function getWorkspaceSnapshot(): Promise<string> {
+  const { pool } = await import("@workspace/db");
   const [db, agents, snippets] = await Promise.all([
     pool.query("SELECT 1 AS connected"),
     pool.query("SELECT id, name, xp, failed_analyses, last_omega, status FROM agents ORDER BY updated_at DESC LIMIT 20"),
@@ -111,10 +113,47 @@ async function runSafeCommand(commandName: string): Promise<string> {
   });
 }
 
-export async function executeDeepseekTool(
-  name: string,
-  rawArguments: string,
-): Promise<string> {
+type DeepseekToolDependencies = {
+  writeProjectCode: typeof writeProjectCode;
+  persistNeuralEvent: (event: {
+    origin: "terminal";
+    eventType: "autonomous_write";
+    content: string;
+  }) => Promise<{
+    id: number;
+    origin: "terminal";
+    eventType: "autonomous_write";
+    content: string;
+    createdAt: Date;
+  } | undefined>;
+  publishNeuralEvent: typeof publishNeuralEvent;
+};
+
+const defaultToolDependencies: DeepseekToolDependencies = {
+  writeProjectCode,
+  persistNeuralEvent: async (event) => {
+    const { db, neuralEventsTable } = await import("@workspace/db");
+    const [created] = await db.insert(neuralEventsTable).values(event).returning();
+    return created
+      ? {
+          ...created,
+          origin: "terminal" as const,
+          eventType: "autonomous_write" as const,
+        }
+      : undefined;
+  },
+  publishNeuralEvent,
+};
+
+export function createDeepseekToolExecutor(
+  overrides: Partial<DeepseekToolDependencies> = {},
+) {
+  const dependencies = { ...defaultToolDependencies, ...overrides };
+
+  return async function executeDeepseekTool(
+    name: string,
+    rawArguments: string,
+  ): Promise<string> {
   let args: Record<string, string>;
   try {
     const parsed: unknown = JSON.parse(rawArguments);
@@ -135,18 +174,18 @@ export async function executeDeepseekTool(
         content: await readProjectCode(args.path),
       });
     }
-    if (name === "write_file") {
-      const result = await writeProjectCode(args.path, args.content);
+    if (name === "write_project_file" || name === "write_file") {
+      const result = await dependencies.writeProjectCode(args.path, args.content);
       const eventContent = `[AUTONOMOUS WRITE] Archivo actualizado -> Ejecutando en PTY... ${result.path}`;
-      const [event] = await db.insert(neuralEventsTable).values({
+      const event = await dependencies.persistNeuralEvent({
         origin: "terminal",
         eventType: "autonomous_write",
         content: eventContent,
-      }).returning();
+      });
       if (event) {
-        await publishNeuralEvent({
+        await dependencies.publishNeuralEvent({
           id: event.id,
-          origin: event.origin as "terminal",
+          origin: event.origin,
           eventType: event.eventType,
           content: event.content,
           createdAt: event.createdAt.toISOString(),
@@ -166,6 +205,7 @@ export async function executeDeepseekTool(
     }
     if (name === "get_workspace_snapshot") return await getWorkspaceSnapshot();
     if (name === "get_library_snapshot") {
+      const { pool } = await import("@workspace/db");
       const { rows } = await pool.query(
         "SELECT id, title, language, created_at, updated_at FROM snippets ORDER BY updated_at DESC LIMIT 20",
       );
@@ -181,4 +221,7 @@ export async function executeDeepseekTool(
       error: error instanceof Error ? error.message : "Falló la ejecución de la herramienta.",
     });
   }
+  };
 }
+
+export const executeDeepseekTool = createDeepseekToolExecutor();

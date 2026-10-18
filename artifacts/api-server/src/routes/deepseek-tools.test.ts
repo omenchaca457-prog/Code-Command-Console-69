@@ -68,6 +68,16 @@ describe("DeepSeek tool permissions", () => {
 
   it("allows writes only to an existing in-project code file with exact arguments", () => {
     assert.deepEqual(
+      validateDeepseekToolArguments("write_project_file", {
+        path: "artifacts/api-server/src/routes/deepseek.ts",
+        content: "export {};\n",
+      }),
+      {
+        path: "artifacts/api-server/src/routes/deepseek.ts",
+        content: "export {};\n",
+      },
+    );
+    assert.deepEqual(
       validateDeepseekToolArguments("write_file", {
         path: "artifacts/api-server/src/routes/deepseek.ts",
         content: "export {};\n",
@@ -78,14 +88,14 @@ describe("DeepSeek tool permissions", () => {
       },
     );
     assert.throws(
-      () => validateDeepseekToolArguments("write_file", {
+      () => validateDeepseekToolArguments("write_project_file", {
         path: "../../.env",
         content: "LEAK=1",
       }),
       /relativa/,
     );
     assert.throws(
-      () => validateDeepseekToolArguments("write_file", {
+      () => validateDeepseekToolArguments("write_project_file", {
         path: "artifacts/api-server/src/routes/deepseek.ts",
         content: "ok",
         overwrite: true,
@@ -93,7 +103,7 @@ describe("DeepSeek tool permissions", () => {
       /Argumentos inválidos/,
     );
     assert.throws(
-      () => validateDeepseekToolArguments("write_file", {
+      () => validateDeepseekToolArguments("write_project_file", {
         path: "artifacts/api-server/src/routes/deepseek.ts",
         content: "x".repeat(256 * 1024 + 1),
       }),

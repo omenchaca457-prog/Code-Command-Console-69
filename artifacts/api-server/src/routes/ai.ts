@@ -15,29 +15,15 @@ import {
 } from "./agent-evaluation";
 import { AgentCircuitBreaker } from "./agent-circuit-breaker";
 import { publishNeuralEvent } from "./neural-event-bus";
+import {
+  AI_CODE_TOOLS,
+  createAiCodeChatRouter,
+  type AiCodeCompletionResult,
+} from "./ai-code-chat";
 
 const router = Router();
 const agentCircuitBreaker = new AgentCircuitBreaker();
 const AGENT_PROVIDER_TIMEOUT_MS = 5_000;
-const AI_CODE_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
-  {
-    type: "function",
-    function: {
-      name: "write_file",
-      description:
-        "Escribe el contenido final en un archivo de código existente del workspace. Invócala únicamente cuando el usuario pida explícitamente aplicar o guardar cambios. No uses rutas absolutas, archivos sensibles ni rutas fuera del proyecto.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: { type: "string", description: "Ruta relativa de un archivo existente." },
-          content: { type: "string", description: "Contenido completo final del archivo." },
-        },
-        required: ["path", "content"],
-        additionalProperties: false,
-      },
-    },
-  },
-];
 
 function evaluateAgentResponse(aiResponse: string, context: string | null | undefined) {
   const parsedOmega = parseOmega(aiResponse);
@@ -61,6 +47,55 @@ function evaluateAgentResponse(aiResponse: string, context: string | null | unde
 
   return { omega, analysisStatus, failureReason };
 }
+
+router.use(createAiCodeChatRouter({
+  parseBody: (body) => AiChatBody.safeParse(body),
+  prepareConversation: async (message, systemPrompt) => {
+    const [conv] = await db
+      .insert(conversations)
+      .values({ title: message.slice(0, 60) })
+      .returning();
+    await db.insert(messages).values([
+      { conversationId: conv.id, role: "system", content: systemPrompt },
+      { conversationId: conv.id, role: "user", content: message },
+    ]);
+    const history = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, conv.id))
+      .orderBy(asc(messages.id));
+    return {
+      conversationId: conv.id,
+      history: history.map((item) => ({
+        role: item.role as "system" | "user" | "assistant" | "tool",
+        content: item.content,
+      })),
+    };
+  },
+  saveAssistantResponse: async (conversationId, content) => {
+    await db.insert(messages).values({
+      conversationId,
+      role: "assistant",
+      content,
+    });
+  },
+  createCompletion: async (messages, tools) =>
+    await openai.chat.completions.create({
+      model: "gpt-5.4",
+      max_completion_tokens: 8192,
+      messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+      ...(tools
+        ? {
+            tools: tools as OpenAI.Chat.Completions.ChatCompletionTool[],
+            tool_choice: "auto" as const,
+          }
+        : {}),
+    }) as unknown as AiCodeCompletionResult,
+  executeTool: async (name, argumentsJson) => {
+    const { executeDeepseekTool } = await import("./deepseek-tools.ts");
+    return executeDeepseekTool(name, argumentsJson);
+  },
+}));
 
 router.get("/agents", async (_req, res) => {
   const records = await db
@@ -101,6 +136,10 @@ router.post("/ai/chat", async (req, res) => {
     res.status(400).json({
       error: "Los análisis de agentes requieren una clave de idempotencia.",
     });
+    return;
+  }
+  if (!agentId) {
+    res.status(400).json({ error: "El agente solicitado no es válido." });
     return;
   }
 
@@ -148,9 +187,7 @@ router.post("/ai/chat", async (req, res) => {
     }
   }
 
-  const agentMetrics = agentId
-    ? buildAgentEvidenceMetrics(context, language)
-    : null;
+  const agentMetrics = buildAgentEvidenceMetrics(context, language);
   if (agentId) {
     await db
       .insert(agentsTable)
@@ -170,22 +207,16 @@ router.post("/ai/chat", async (req, res) => {
     .values({ title: message.slice(0, 60) })
     .returning();
 
-  const systemPrompt = agentId
-    ? [
-        buildAgentSystemPrompt(agentRolePrompt, agentName),
-        language ? `Lenguaje analizado: ${language}.` : "",
-        `Payload obligatorio del nodo: ${JSON.stringify(agentMetrics)}. Estas métricas fueron calculadas por el servidor; no las alteres.`,
-        context
-          ? `Código o métricas verificables para el análisis:\n\`\`\`\n${context}\n\`\`\``
-          : "No se proporcionó código ni métricas verificables.",
-      ]
-        .filter(Boolean)
-        .join("\n\n")
-    : `You are an elite AI coding assistant inside DevTerminal — a professional developer tool. You help with code, debugging, explanations, algorithms, security concepts, and any programming topic.
-${language ? `Current language context: ${language}.` : ""}
-${context ? `Code context:\n\`\`\`\n${context}\n\`\`\`` : ""}
-When the user explicitly asks you to modify or apply code, inspect the current source and use write_file with the complete final content. Only existing code files inside the workspace can be changed. Do not modify secrets or run arbitrary shell commands. Otherwise, answer normally.
-Be direct, concise, and technically precise. Format code blocks with language tags. Think like a senior engineer.`;
+  const systemPrompt = [
+    buildAgentSystemPrompt(agentRolePrompt, agentName),
+    language ? `Lenguaje analizado: ${language}.` : "",
+    `Payload obligatorio del nodo: ${JSON.stringify(agentMetrics)}. Estas métricas fueron calculadas por el servidor; no las alteres.`,
+    context
+      ? `Código o métricas verificables para el análisis:\n\`\`\`\n${context}\n\`\`\``
+      : "No se proporcionó código ni métricas verificables.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   await db.insert(messages).values([
     { conversationId: conv.id, role: "system", content: systemPrompt },
@@ -199,104 +230,53 @@ Be direct, concise, and technically precise. Format code blocks with language ta
     .orderBy(asc(messages.id));
 
   let completion: Awaited<ReturnType<typeof openai.chat.completions.create>>;
-  const chatMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
-    history.map((m) => ({
-      role: m.role as "system" | "user" | "assistant",
-      content: m.content,
-    }));
-  const controller = agentId ? new AbortController() : null;
-  const timeout = controller
-    ? setTimeout(() => controller.abort(), AGENT_PROVIDER_TIMEOUT_MS)
-    : undefined;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AGENT_PROVIDER_TIMEOUT_MS);
   try {
     completion = await openai.chat.completions.create({
       model: "gpt-5.4",
       max_completion_tokens: 8192,
-      messages: chatMessages,
-      ...(agentId ? {} : { tools: AI_CODE_TOOLS, tool_choice: "auto" as const }),
-    }, controller ? { signal: controller.signal } : undefined);
-    for (let round = 0; !agentId && round < 4; round += 1) {
-      const assistantMessage = completion.choices[0]?.message;
-      const toolCalls = assistantMessage?.tool_calls ?? [];
-      if (!toolCalls.length) break;
-      chatMessages.push(assistantMessage);
-      for (const toolCall of toolCalls) {
-        if (toolCall.type !== "function" || toolCall.function.name !== "write_file") {
-          chatMessages.push({
-            role: "tool",
-            tool_call_id: toolCall.id,
-            content: JSON.stringify({ error: "Herramienta no permitida." }),
-          });
-          continue;
-        }
-        const { executeDeepseekTool } = await import("./deepseek-tools.ts");
-        const result = await executeDeepseekTool(
-          toolCall.function.name,
-          toolCall.function.arguments,
-        );
-        chatMessages.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: result,
-        });
-      }
-      completion = await openai.chat.completions.create({
-        model: "gpt-5.4",
-        max_completion_tokens: 8192,
-        messages: chatMessages,
-        tools: AI_CODE_TOOLS,
-        tool_choice: "auto",
-      }, controller ? { signal: controller.signal } : undefined);
-    }
-    if (agentId) agentCircuitBreaker.recordSuccess(agentId);
+      messages: history.map((item) => ({
+        role: item.role as "system" | "user" | "assistant",
+        content: item.content,
+      })),
+    }, { signal: controller.signal });
+    agentCircuitBreaker.recordSuccess(agentId);
   } catch (error) {
-    if (agentId) {
-      const breaker = agentCircuitBreaker.recordFailure(agentId);
-      const failure = controller?.signal.aborted
-        ? `El proveedor superó el límite de ${AGENT_PROVIDER_TIMEOUT_MS} ms.`
-        : "El proveedor de IA no completó el análisis.";
-      await db.update(agentsTable).set({
-        status: breaker.remainingMs > 0 ? "standby" : "failed",
-        failedAnalyses: sql`${agentsTable.failedAnalyses} + 1`,
-        lastFailure: failure,
-        lastOmega: null,
-        updatedAt: new Date(),
-      }).where(eq(agentsTable.id, agentId));
-      const [neuralEvent] = await db.insert(neuralEventsTable).values({
-        origin: "agents",
-        eventType: breaker.remainingMs > 0 ? "cortex_recovery" : "agent_failed",
-        content: `agent=${agentId}; consecutive_failures=${breaker.consecutiveFailures}; ${failure}`,
-      }).returning();
-      await publishNeuralEvent({
-        id: neuralEvent.id,
-        origin: "agents",
-        eventType: neuralEvent.eventType,
-        content: neuralEvent.content,
-        createdAt: neuralEvent.createdAt.toISOString(),
-      });
-      res.status(controller?.signal.aborted ? 504 : 502).json({
-        error: failure,
-        status: breaker.remainingMs > 0 ? "standby" : "failed",
-        retryAfterMs: breaker.remainingMs,
-      });
-      return;
-    }
-    throw error;
+    const breaker = agentCircuitBreaker.recordFailure(agentId);
+    const failure = controller.signal.aborted
+      ? `El proveedor superó el límite de ${AGENT_PROVIDER_TIMEOUT_MS} ms.`
+      : "El proveedor de IA no completó el análisis.";
+    await db.update(agentsTable).set({
+      status: breaker.remainingMs > 0 ? "standby" : "failed",
+      failedAnalyses: sql`${agentsTable.failedAnalyses} + 1`,
+      lastFailure: failure,
+      lastOmega: null,
+      updatedAt: new Date(),
+    }).where(eq(agentsTable.id, agentId));
+    const [neuralEvent] = await db.insert(neuralEventsTable).values({
+      origin: "agents",
+      eventType: breaker.remainingMs > 0 ? "cortex_recovery" : "agent_failed",
+      content: `agent=${agentId}; consecutive_failures=${breaker.consecutiveFailures}; ${failure}`,
+    }).returning();
+    await publishNeuralEvent({
+      id: neuralEvent.id,
+      origin: "agents",
+      eventType: neuralEvent.eventType,
+      content: neuralEvent.content,
+      createdAt: neuralEvent.createdAt.toISOString(),
+    });
+    res.status(controller.signal.aborted ? 504 : 502).json({
+      error: failure,
+      status: breaker.remainingMs > 0 ? "standby" : "failed",
+      retryAfterMs: breaker.remainingMs,
+    });
+    return;
   } finally {
-    if (timeout) clearTimeout(timeout);
+    clearTimeout(timeout);
   }
 
   const aiResponse = completion.choices[0]?.message?.content ?? "";
-
-  if (!agentId) {
-    await db.insert(messages).values({
-      conversationId: conv.id,
-      role: "assistant",
-      content: aiResponse,
-    });
-    res.json({ response: aiResponse, conversationId: conv.id });
-    return;
-  }
 
   const { omega, analysisStatus, failureReason } = evaluateAgentResponse(
     aiResponse,

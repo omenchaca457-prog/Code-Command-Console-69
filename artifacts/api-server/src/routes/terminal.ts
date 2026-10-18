@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage, Server } from "http";
 import * as pty from "node-pty";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
 
 const BOOT_BANNER = `\r\n\x1b[38;5;196m╔══════════════════════════════════════════════════════════╗\x1b[0m\r\n\x1b[38;5;196m║\x1b[0m  \x1b[1m\x1b[36mDEVTERMINAL\x1b[0m \x1b[38;5;240m—\x1b[0m \x1b[1m\x1b[92mLinux PTY v2.0\x1b[0m \x1b[38;5;196m║\x1b[0m\r\n\x1b[38;5;196m║\x1b[0m  \x1b[38;5;240mLey 4105 · Coherencia Eterna · SQ-AI Neural Core\x1b[0m         \x1b[38;5;196m║\x1b[0m\r\n\x1b[38;5;196m╚══════════════════════════════════════════════════════════╝\x1b[0m\r\n\r\n\x1b[38;5;240m  Session: real bash PTY • type anything, it works\x1b[0m\r\n\x1b[38;5;240m  Tip: python3, node, go, rustc, curl, git — all live\x1b[0m\r\n\r\n`;
 

@@ -11,6 +11,7 @@ import {
   consumeDeepseekSse,
   persistDeepseekAssistantResponse,
 } from "@/lib/deepseek-stream";
+import { writeNewAutonomousEvents } from "@/lib/terminal-autonomous-events";
 
 const BASE_HOST = window.location.host;
 const WS_PROTOCOL = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -93,13 +94,13 @@ export default function TerminalPage() {
       return;
     }
 
-    for (const event of [...events].sort((left, right) => left.id - right.id)) {
-      if (event.id <= lastAutonomousEventIdRef.current) continue;
-      lastAutonomousEventIdRef.current = event.id;
-      if (event.eventType === "autonomous_write" && termRef.current) {
-        writeSafeText(termRef.current, `\n${event.content}\n`);
-      }
-    }
+    lastAutonomousEventIdRef.current = writeNewAutonomousEvents(
+      events,
+      lastAutonomousEventIdRef.current,
+      (content) => {
+        if (termRef.current) writeSafeText(termRef.current, content);
+      },
+    );
   }, [events]);
 
   const sendResize = useCallback((term: XTerm, ws: WebSocket) => {

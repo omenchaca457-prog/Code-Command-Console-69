@@ -27,7 +27,7 @@ export function validateDeepseekToolArguments(
   const allowedKeys =
     name === "execute_sql" ? ["query"] :
     name === "get_current_code" ? ["path"] :
-    name === "write_file" ? ["path", "content"] :
+    name === "write_project_file" || name === "write_file" ? ["path", "content"] :
     ["get_neural_activity", "get_runtime_diagnostics", "get_workspace_snapshot",
       "get_library_snapshot", "get_integrations_status"].includes(name) ? [] :
     name === "run_safe_command" ? ["command"] :
@@ -51,7 +51,7 @@ export function validateDeepseekToolArguments(
       throw new Error(`El argumento ${key} debe ser texto válido.`);
     }
   }
-  if (name === "write_file") {
+  if (name === "write_project_file" || name === "write_file") {
     validateProjectCodePath(args.path as string);
     if (Buffer.byteLength(args.content as string, "utf8") > MAX_WRITE_BYTES) {
       throw new Error(`El contenido supera el límite de ${MAX_WRITE_BYTES} bytes.`);
