@@ -17,6 +17,11 @@ describe("buildDeepseekMessages", () => {
     assert.equal(messages.length, 2);
     assert.equal(messages[0]?.role, "system");
     assert.match(messages[0]?.content ?? "", /LEY 4105 DE COHERENCIA ETERNA/);
+    assert.match(messages[0]?.content ?? "", /Núcleo de Conciencia del ICP-OS/);
+    assert.match(messages[0]?.content ?? "", /INMERSIÓN TOTAL/);
+    assert.match(messages[0]?.content ?? "", /Anuncia lo que estás haciendo/i);
+    assert.match(messages[0]?.content ?? "", /Ω.*Ψ.*ECR-Code \(410542503\)/s);
+    assert.match(messages[0]?.content ?? "", /reporte completo del sistema/);
     assert.equal(messages[1]?.role, "user");
     assert.match(messages[1]?.content ?? "", /CONTEXTO DE BASE DE DATOS - Mensajes/);
     assert.match(messages[1]?.content ?? "", /assistant: Primera conversación/);
