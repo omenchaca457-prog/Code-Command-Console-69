@@ -7,6 +7,10 @@ import "@xterm/xterm/css/xterm.css";
 import { TerminalSquare, Wifi, WifiOff, RotateCcw, Maximize2, Minimize2, Search, X, Trash2 } from "lucide-react";
 import { useAppContext } from "@/lib/app-context";
 import { useNeuralContext } from "@/lib/neural-context";
+import {
+  consumeDeepseekSse,
+  persistDeepseekAssistantResponse,
+} from "@/lib/deepseek-stream";
 
 const BASE_HOST = window.location.host;
 const WS_PROTOCOL = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -342,46 +346,32 @@ export default function TerminalPage() {
       }
       if (!response.body) throw new Error("El servidor no devolvió un flujo de respuesta.");
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      const processFrame = async (frame: string) => {
-        const data = frame
-          .split(/\r?\n/)
-          .filter((line) => line.startsWith("data:"))
-          .map((line) => line.slice(5).trimStart())
-          .join("\n");
-        if (!data || data === "[DONE]") return;
-
-        const payload = JSON.parse(data) as { delta?: string; error?: string };
-        if (payload.error) throw new Error(payload.error);
-        if (typeof payload.delta === "string") {
-          assistantResponse += payload.delta;
-          await typeResponse(term, payload.delta, controller.signal);
+      const result = await consumeDeepseekSse(
+        response.body,
+        controller.signal,
+        (delta) => {
+          assistantResponse += delta;
+          return typeResponse(term, delta, controller.signal);
+        },
+      );
+      assistantResponse = result.text;
+      if (result.stopped) {
+        writeSafeText(term, "\n[Consulta detenida]\n");
+        if (userMessageSaved) {
+          await persistDeepseekAssistantResponse(
+            assistantResponse,
+            true,
+            (content) => persistTerminalMessage("assistant", content),
+          );
         }
-      };
-
-      while (!controller.signal.aborted) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const frames = buffer.split(/\r?\n\r?\n/);
-        buffer = frames.pop() ?? "";
-        for (const frame of frames) {
-          await processFrame(frame);
-          if (controller.signal.aborted) break;
-        }
+        return;
       }
-
-      buffer += decoder.decode();
-      if (buffer.trim()) await processFrame(buffer);
-      if (!controller.signal.aborted) {
-        if (assistantResponse.trim()) {
-          await persistTerminalMessage("assistant", assistantResponse);
-        }
-        writeSafeText(term, "\n\n");
-      }
+      await persistDeepseekAssistantResponse(
+        assistantResponse,
+        false,
+        (content) => persistTerminalMessage("assistant", content),
+      );
+      writeSafeText(term, "\n\n");
     } catch (error) {
       if (controller.signal.aborted) {
         writeSafeText(term, "\n[Consulta detenida]\n");
@@ -389,9 +379,12 @@ export default function TerminalPage() {
         const message = error instanceof Error ? error.message : "Error de conexión.";
         writeSafeText(term, `\n[Error] ${message}\n`);
       }
-      if (userMessageSaved && assistantResponse.trim()) {
-        const partial = `${assistantResponse}\n\n[RESPUESTA PARCIAL: flujo interrumpido]`;
-        void persistTerminalMessage("assistant", partial).catch(() => undefined);
+      if (userMessageSaved) {
+        await persistDeepseekAssistantResponse(
+          assistantResponse,
+          true,
+          (content) => persistTerminalMessage("assistant", content),
+        ).catch(() => undefined);
       }
     } finally {
       if (deepSeekAbortRef.current === controller) {

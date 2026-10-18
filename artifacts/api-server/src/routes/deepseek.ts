@@ -1,19 +1,15 @@
 import OpenAI from "openai";
 import { Router, type Request, type Response } from "express";
-import { DeepseekChatBody } from "@workspace/api-zod";
-import { pool } from "@workspace/db";
 import {
   buildDeepseekMessages,
   filterBadRequestHistory,
   formatMessageContext,
-} from "./deepseek-prompt";
-import { executeDeepseekTool } from "./deepseek-tools";
+} from "./deepseek-prompt.ts";
 import {
   emitMockDeepseekStream,
   type DeepseekMockScenario,
-} from "./deepseek-mock-stream";
+} from "./deepseek-mock-stream.ts";
 
-const router = Router();
 const MAX_TOOL_ROUNDS = 10;
 const MAX_TOOL_CALLS = 10;
 
@@ -54,12 +50,7 @@ const DEEPSEEK_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "get_neural_activity",
       description: "Consulta los 10 eventos más recientes de la Red Neuronal.",
-      parameters: {
-        type: "object",
-        properties: {},
-        required: [],
-        additionalProperties: false,
-      },
+      parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
     },
   },
   {
@@ -114,11 +105,78 @@ const DEEPSEEK_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   },
 ];
 
+type DeepseekChunk = OpenAI.Chat.Completions.ChatCompletionChunk;
+type DeepseekStream = AsyncIterable<DeepseekChunk>;
+type DeepseekClient = {
+  chat: {
+    completions: {
+      create: (
+        request: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
+        options: { signal: AbortSignal },
+      ) => Promise<DeepseekStream>;
+    };
+  };
+};
+
+type DeepseekChatInput = {
+  prompt: string;
+  context?: string | null;
+};
+type DeepseekParseResult =
+  | { success: true; data: DeepseekChatInput }
+  | { success: false };
+
+type DeepseekDependencies = {
+  getApiKey: () => string | undefined;
+  createClient: (apiKey: string) => DeepseekClient;
+  parseBody: (body: unknown) => Promise<DeepseekParseResult>;
+  loadHistory: () => Promise<string>;
+  executeTool: (name: string, args: string) => Promise<string>;
+  emitMockStream: (
+    response: Response,
+    signal: AbortSignal,
+    scenario: DeepseekMockScenario,
+  ) => Promise<void>;
+};
+
+const defaultDependencies: DeepseekDependencies = {
+  getApiKey: () => process.env.OPENAI_API_KEY,
+  createClient: (apiKey) =>
+    new OpenAI({
+      apiKey,
+      baseURL: "https://api.deepseek.com/v1",
+    }) as unknown as DeepseekClient,
+  parseBody: async (body) => {
+    const { DeepseekChatBody } = await import("@workspace/api-zod");
+    return DeepseekChatBody.safeParse(body);
+  },
+  loadHistory: async () => {
+    const { pool } = await import("@workspace/db");
+    const { rows } = await pool.query<{
+      role: string;
+      content: string;
+      created_at: Date | string;
+    }>(`
+      SELECT role, content, created_at
+      FROM messages
+      WHERE conversation_id = (SELECT MAX(id) FROM conversations)
+      ORDER BY id ASC LIMIT 40;
+    `);
+    return formatMessageContext(filterBadRequestHistory(rows));
+  },
+  executeTool: async (name, args) => {
+    const { executeDeepseekTool } = await import("./deepseek-tools.ts");
+    return executeDeepseekTool(name, args);
+  },
+  emitMockStream: emitMockDeepseekStream,
+};
+
 const handleDeepseekChat = async (
+  dependencies: DeepseekDependencies,
   req: Request,
   res: Response,
 ): Promise<void> => {
-  const parsed = DeepseekChatBody.safeParse(req.body);
+  const parsed = await dependencies.parseBody(req.body);
   if (!parsed.success || !parsed.data.prompt.trim()) {
     res.status(400).json({ error: "Escribe una pregunta válida." });
     return;
@@ -129,13 +187,16 @@ const handleDeepseekChat = async (
     process.env.NODE_ENV !== "production";
   const requestedMock = req.header("x-sqai-mock-scenario");
   const mockScenarios: DeepseekMockScenario[] = ["success", "tool_call", "partial_error"];
-  if (requestedMock && (!mockEnabled || !mockScenarios.includes(requestedMock as DeepseekMockScenario))) {
+  if (
+    requestedMock &&
+    (!mockEnabled || !mockScenarios.includes(requestedMock as DeepseekMockScenario))
+  ) {
     res.status(404).json({ error: "Modo de simulación no disponible." });
     return;
   }
   const mockScenario = requestedMock as DeepseekMockScenario | undefined;
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = dependencies.getApiKey();
   if (!apiKey && !(mockEnabled && mockScenario)) {
     res.status(503).json({
       error: "Falta configurar el secreto OPENAI_API_KEY en Replit.",
@@ -158,41 +219,26 @@ const handleDeepseekChat = async (
 
   try {
     if (mockEnabled && mockScenario) {
-      await emitMockDeepseekStream(res, controller.signal, mockScenario);
+      await dependencies.emitMockStream(res, controller.signal, mockScenario);
       return;
     }
-
     if (!apiKey) throw new Error("Falta configurar OPENAI_API_KEY.");
 
     let dbContext = "";
     try {
-      const { rows } = await pool.query<{
-        role: string;
-        content: string;
-        created_at: Date | string;
-      }>(`
-        SELECT role, content, created_at
-        FROM messages
-        WHERE conversation_id = (SELECT MAX(id) FROM conversations)
-        ORDER BY id ASC LIMIT 40;
-      `);
-      dbContext = formatMessageContext(filterBadRequestHistory(rows));
+      dbContext = await dependencies.loadHistory();
     } catch (dbError) {
       req.log.error({ err: dbError }, "Error leyendo la DB");
       dbContext = "Error al conectar con la base de datos.";
     }
 
-    const deepseek = new OpenAI({
-      apiKey,
-      baseURL: "https://api.deepseek.com/v1",
-    });
-
+    const deepseek = dependencies.createClient(apiKey);
     const [workspace, diagnostics, library, integrations, neural] = await Promise.all([
-      executeDeepseekTool("get_workspace_snapshot", "{}"),
-      executeDeepseekTool("get_runtime_diagnostics", "{}"),
-      executeDeepseekTool("get_library_snapshot", "{}"),
-      executeDeepseekTool("get_integrations_status", "{}"),
-      executeDeepseekTool("get_neural_activity", "{}"),
+      dependencies.executeTool("get_workspace_snapshot", "{}"),
+      dependencies.executeTool("get_runtime_diagnostics", "{}"),
+      dependencies.executeTool("get_library_snapshot", "{}"),
+      dependencies.executeTool("get_integrations_status", "{}"),
+      dependencies.executeTool("get_neural_activity", "{}"),
     ]);
     const systemContext = [
       context ?? "",
@@ -248,7 +294,6 @@ const handleDeepseekChat = async (
           assistantText += delta.content;
           res.write(`data: ${JSON.stringify({ delta: delta.content })}\n\n`);
         }
-
         for (const toolDelta of delta?.tool_calls ?? []) {
           const pending = pendingCalls.get(toolDelta.index) ?? {
             id: "",
@@ -271,13 +316,11 @@ const handleDeepseekChat = async (
           type: "function" as const,
           function: { name: call.name, arguments: call.arguments },
         }));
-
       if (calls.length === 0) {
         res.write("data: [DONE]\n\n");
         completed = true;
         break;
       }
-
       if (forceSynthesis) {
         res.write(
           `data: ${JSON.stringify({ error: "No se pudo completar la síntesis final. Intenta reducir el alcance de la solicitud." })}\n\n`,
@@ -291,7 +334,6 @@ const handleDeepseekChat = async (
         content: assistantText || null,
         tool_calls: calls,
       });
-
       for (const call of calls) {
         if (!call.id || !call.function.name) continue;
         if (toolCallsExecuted >= MAX_TOOL_CALLS) {
@@ -302,13 +344,12 @@ const handleDeepseekChat = async (
           break;
         }
         toolCallsExecuted += 1;
-        const result = await executeDeepseekTool(
+        const result = await dependencies.executeTool(
           call.function.name,
           call.function.arguments,
         );
         messages.push({ role: "tool", tool_call_id: call.id, content: result });
       }
-
       if (completed) break;
     }
 
@@ -328,18 +369,24 @@ const handleDeepseekChat = async (
         providerStatus === 402
           ? "La cuenta de DeepSeek no tiene saldo disponible. Añade saldo o configura otra clave."
           : "No se pudo completar la consulta a DeepSeek.";
-      res.write(
-        `data: ${JSON.stringify({
-          error: message,
-        })}\n\n`,
-      );
+      res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
     }
   } finally {
     if (!res.writableEnded) res.end();
   }
 };
 
-router.post("/deepseek/chat", handleDeepseekChat);
-router.post("/chat", handleDeepseekChat);
+export function createDeepseekRouter(
+  overrides: Partial<DeepseekDependencies> = {},
+) {
+  const dependencies = { ...defaultDependencies, ...overrides };
+  const router = Router();
+  const handler = (req: Request, res: Response) =>
+    handleDeepseekChat(dependencies, req, res);
 
-export default router;
+  router.post("/deepseek/chat", handler);
+  router.post("/chat", handler);
+  return router;
+}
+
+export default createDeepseekRouter();
