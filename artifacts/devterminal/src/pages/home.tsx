@@ -144,7 +144,7 @@ export default function Home() {
       const resp = await fetch(`${BASE_URL}/api/ai/auto-run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, language: languageId }),
+        body: JSON.stringify({ code, language: languageId, consent: true }),
         signal: abortRef.current.signal,
       });
 
@@ -363,6 +363,8 @@ export default function Home() {
               <button
                 onClick={autoRunning ? () => { abortRef.current?.abort(); setAutoRunning(false); } : handleAutoRun}
                 disabled={executeMutation.isPending}
+                title={autoRunning ? "Detener la ejecución automática" : "Iniciar Auto-run ahora; no se ejecuta automáticamente"}
+                aria-label={autoRunning ? "Detener Auto-run" : "Iniciar Auto-run manualmente"}
                 className={`flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-mono font-bold tracking-widest uppercase transition-all disabled:opacity-40 ${
                   autoRunning
                     ? 'text-[#ff003c] border border-[#ff003c]/50 bg-[#ff003c]/10 animate-pulse'

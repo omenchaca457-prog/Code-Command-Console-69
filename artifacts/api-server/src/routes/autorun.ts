@@ -23,10 +23,20 @@ type SseEvent =
   | { step: "error"; msg: string };
 
 router.post("/ai/auto-run", async (req, res) => {
-  const { code, language } = req.body as { code: string; language: string };
+  const { code, language, consent } = req.body as {
+    code: string;
+    language: string;
+    consent?: boolean;
+  };
 
+  if (consent !== true) {
+    res.status(403).json({
+      error: "Auto-run está desactivado. Inícialo manualmente desde la interfaz para dar permiso.",
+    });
+    return;
+  }
   if (!code?.trim() || !language) {
-    res.status(400).json({ error: "Missing code or language" });
+    res.status(400).json({ error: "Falta código o lenguaje." });
     return;
   }
 

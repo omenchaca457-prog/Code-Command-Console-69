@@ -108,6 +108,7 @@ export default function Agents() {
   const { currentCode, currentLanguage } = useAppContext();
   const { toast } = useToast();
   const evolveTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const evolveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -216,16 +217,33 @@ export default function Agents() {
               prevMsg ? `El agente anterior dijo: "${prevMsg.slice(0, 150)}". Continúa desde ahí.` : "Nuevo ciclo de análisis.",
             ];
             const task = evolveTasks[Math.floor(Math.random() * evolveTasks.length)];
-            setTimeout(() => runAgent(a, task), 0);
+            if (evolveTimeoutRef.current) clearTimeout(evolveTimeoutRef.current);
+            evolveTimeoutRef.current = setTimeout(() => {
+              if (autoEvolveRef.current) void runAgent(a, task);
+            }, 0);
           }
           return prev;
         });
       }, 12000);
     } else {
       if (evolveTimerRef.current) clearInterval(evolveTimerRef.current);
+      if (evolveTimeoutRef.current) clearTimeout(evolveTimeoutRef.current);
     }
-    return () => { if (evolveTimerRef.current) clearInterval(evolveTimerRef.current); };
+    return () => {
+      if (evolveTimerRef.current) clearInterval(evolveTimerRef.current);
+      if (evolveTimeoutRef.current) clearTimeout(evolveTimeoutRef.current);
+    };
   }, [autoEvolve, runAgent]);
+
+  const toggleAutoEvolve = () => {
+    const next = !autoEvolveRef.current;
+    autoEvolveRef.current = next;
+    setAutoEvolve(next);
+    if (!next) {
+      if (evolveTimerRef.current) clearInterval(evolveTimerRef.current);
+      if (evolveTimeoutRef.current) clearTimeout(evolveTimeoutRef.current);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full bg-[#070707]">
@@ -243,7 +261,9 @@ export default function Agents() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setAutoEvolve(v => !v)}
+            onClick={toggleAutoEvolve}
+            aria-pressed={autoEvolve}
+            title={autoEvolve ? "Detener la evolución automática" : "Activar solo al hacer clic"}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 font-mono text-[10px] tracking-widest uppercase border transition-all ${
               autoEvolve
                 ? 'border-[#00ffff]/50 text-[#00ffff] bg-[#00ffff]/10'
