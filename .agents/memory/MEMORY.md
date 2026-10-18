@@ -1,0 +1,1 @@
+- [Node test database imports](node-test-db-imports.md) — Node's ESM test runner cannot directly resolve the database package's TypeScript barrel imports.

@@ -19,4 +19,5 @@ export interface AiChatRequest {
   agentName?: string;
   /** @maxLength 1000 */
   agentRolePrompt?: string;
+  idempotencyKey?: string;
 }

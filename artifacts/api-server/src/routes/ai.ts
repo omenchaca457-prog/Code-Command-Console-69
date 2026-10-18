@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db, conversations, messages, agentsTable } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
-import { eq, asc, sql } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import { AiChatBody, AiExplainBody, AiImproveBody } from "@workspace/api-zod";
+import { persistAgentResponse } from "./agent-message-persistence";
 import {
   buildAgentSystemPrompt,
   classifyAgentAnalysis,
@@ -11,6 +12,23 @@ import {
 } from "./agent-evaluation";
 
 const router = Router();
+
+function evaluateAgentResponse(aiResponse: string, context: string | null | undefined) {
+  const parsedOmega = parseOmega(aiResponse);
+  const hasEvidence = hasAgentEvidence(context);
+  const omega = hasEvidence ? parsedOmega : Math.min(parsedOmega ?? 0, 0.49);
+  const analysisStatus = classifyAgentAnalysis(omega, hasEvidence);
+  const failureReason =
+    analysisStatus === "failed"
+      ? !hasEvidence
+        ? "No se proporcionó código ni métricas verificables."
+        : parsedOmega === null
+          ? "El agente no devolvió un índice Ω válido."
+          : `Índice Ω bajo (${parsedOmega.toFixed(2)}).`
+      : null;
+
+  return { omega, analysisStatus, failureReason };
+}
 
 router.get("/agents", async (_req, res) => {
   const records = await db
@@ -33,11 +51,52 @@ router.post("/ai/chat", async (req, res) => {
     return;
   }
 
-  const { message, context, language, agentId, agentName, agentRolePrompt } =
-    parsed.data;
+  const {
+    message,
+    context,
+    language,
+    agentId,
+    agentName,
+    agentRolePrompt,
+    idempotencyKey,
+  } = parsed.data;
   if (agentId && !/^[a-z0-9_-]{1,64}$/.test(agentId)) {
     res.status(400).json({ error: "Identificador de agente inválido." });
     return;
+  }
+  if (agentId && !idempotencyKey) {
+    res.status(400).json({
+      error: "Los análisis de agentes requieren una clave de idempotencia.",
+    });
+    return;
+  }
+
+  if (agentId && idempotencyKey) {
+    const [savedMessage] = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.idempotencyKey, idempotencyKey))
+      .limit(1);
+
+    if (savedMessage) {
+      const [agent] = await db
+        .select({ xp: agentsTable.xp })
+        .from(agentsTable)
+        .where(eq(agentsTable.id, agentId))
+        .limit(1);
+      const { omega, analysisStatus } = evaluateAgentResponse(
+        savedMessage.content,
+        context,
+      );
+      res.json({
+        response: savedMessage.content,
+        conversationId: savedMessage.conversationId,
+        omega,
+        xp: agent?.xp ?? 0,
+        analysisStatus,
+      });
+      return;
+    }
   }
 
   const [conv] = await db
@@ -82,64 +141,40 @@ Be direct, concise, and technically precise. Format code blocks with language ta
 
   const aiResponse = completion.choices[0]?.message?.content ?? "";
 
-  await db.insert(messages).values({
-    conversationId: conv.id,
-    role: "assistant",
-    content: aiResponse,
-  });
-
   if (!agentId) {
+    await db.insert(messages).values({
+      conversationId: conv.id,
+      role: "assistant",
+      content: aiResponse,
+    });
     res.json({ response: aiResponse, conversationId: conv.id });
     return;
   }
 
-  const parsedOmega = parseOmega(aiResponse);
-  const hasEvidence = hasAgentEvidence(context);
-  const omega = hasEvidence ? parsedOmega : Math.min(parsedOmega ?? 0, 0.49);
-  const analysisStatus = classifyAgentAnalysis(omega, hasEvidence);
-  const failureReason =
-    analysisStatus === "failed"
-      ? !hasEvidence
-        ? "No se proporcionó código ni métricas verificables."
-        : parsedOmega === null
-          ? "El agente no devolvió un índice Ω válido."
-          : `Índice Ω bajo (${parsedOmega.toFixed(2)}).`
-      : null;
-  const [agent] = await db
-    .insert(agentsTable)
-    .values({
-      id: agentId,
-      name: agentName || agentId,
-      xp: analysisStatus === "rewarded" ? 1 : 0,
-      failedAnalyses: analysisStatus === "failed" ? 1 : 0,
-      lastOmega: omega,
-      lastFailure: failureReason,
-    })
-    .onConflictDoUpdate({
-      target: agentsTable.id,
-      set: {
-        name: agentName || agentId,
-        xp:
-          analysisStatus === "rewarded"
-            ? sql`${agentsTable.xp} + 1`
-            : sql`${agentsTable.xp}`,
-        failedAnalyses:
-          analysisStatus === "failed"
-            ? sql`${agentsTable.failedAnalyses} + 1`
-            : sql`${agentsTable.failedAnalyses}`,
-        lastOmega: omega,
-        lastFailure: failureReason,
-        updatedAt: new Date(),
-      },
-    })
-    .returning({ xp: agentsTable.xp });
+  const { omega, analysisStatus, failureReason } = evaluateAgentResponse(
+    aiResponse,
+    context,
+  );
+  const saved = await persistAgentResponse({
+    conversationId: conv.id,
+    idempotencyKey: idempotencyKey!,
+    agentId,
+    agentName: agentName || agentId,
+    content: aiResponse,
+    omega,
+    analysisStatus,
+    failureReason,
+  });
+  const finalAnalysis = saved.inserted
+    ? { omega, analysisStatus }
+    : evaluateAgentResponse(saved.message.content, context);
 
   res.json({
-    response: aiResponse,
-    conversationId: conv.id,
-    omega,
-    xp: agent?.xp ?? 0,
-    analysisStatus,
+    response: saved.message.content,
+    conversationId: saved.message.conversationId,
+    omega: finalAnalysis.omega,
+    xp: saved.xp,
+    analysisStatus: finalAnalysis.analysisStatus,
   });
 });
 

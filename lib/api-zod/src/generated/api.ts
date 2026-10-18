@@ -104,6 +104,7 @@ export const AiChatBody = zod.object({
     .optional(),
   agentName: zod.string().max(aiChatBodyAgentNameMax).optional(),
   agentRolePrompt: zod.string().max(aiChatBodyAgentRolePromptMax).optional(),
+  idempotencyKey: zod.string().uuid().optional(),
 });
 
 export const AiChatResponse = zod.object({

@@ -151,6 +151,7 @@ export default function Agents() {
 
     const code = currentCode || "(no hay código en el workspace)";
     const msg = task || globalTask || `Analiza el siguiente código ${currentLanguage}:\n\n${code.slice(0, 800)}`;
+    const idempotencyKey = crypto.randomUUID();
 
     updateAgent(agent.id, {
       status: "thinking",
@@ -168,6 +169,7 @@ export default function Agents() {
           agentId: agent.role.id,
           agentName: agent.role.name,
           agentRolePrompt: agent.role.systemPrompt,
+          idempotencyKey,
         }),
       });
       const data = await resp.json();

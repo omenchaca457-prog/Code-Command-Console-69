@@ -439,6 +439,9 @@ components:
         agentRolePrompt:
           type: string
           maxLength: 1000
+        idempotencyKey:
+          type: string
+          format: uuid
       required:
         - message
 
