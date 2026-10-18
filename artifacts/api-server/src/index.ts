@@ -2,8 +2,15 @@ import { createServer } from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { attachTerminalWS } from "./routes/terminal";
-import { startNeuralEventListener, stopNeuralEventListener } from "./routes/neural-event-bus.ts";
 import { pool } from "@workspace/db";
+import {
+  configureNeuralEventNotifier,
+  publishRemoteNeuralEvent,
+} from "./routes/neural-event-bus.ts";
+import {
+  loadNeuralEventById,
+  PostgresNeuralEventTransport,
+} from "./routes/neural-event-postgres.ts";
 
 const rawPort = process.env["PORT"];
 
@@ -22,7 +29,15 @@ if (Number.isNaN(port) || port <= 0) {
 const server = createServer(app);
 
 const terminalWss = attachTerminalWS(server);
-startNeuralEventListener(pool, logger);
+
+const neuralEventTransport = new PostgresNeuralEventTransport({
+  pool,
+  loadEvent: (eventId) => loadNeuralEventById(pool, eventId),
+  onEvent: publishRemoteNeuralEvent,
+});
+configureNeuralEventNotifier((eventId) => neuralEventTransport.publish(eventId));
+
+await neuralEventTransport.start();
 
 server.listen(port, () => {
   logger.info({ port }, "Server listening");
@@ -38,7 +53,8 @@ process.once("SIGTERM", () => {
       logger.error({ err: error }, "Error cerrando el servidor HTTP");
       process.exitCode = 1;
     }
-    void stopNeuralEventListener()
+    void neuralEventTransport
+      .stop()
       .then(() => pool.end())
       .then(() => logger.info("Pool de PostgreSQL cerrado"))
       .catch((poolError) => {

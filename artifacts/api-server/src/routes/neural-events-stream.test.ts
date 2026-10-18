@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
+import { EventEmitter } from "node:events";
 import express, { type Router } from "express";
 import { describe, it } from "node:test";
 import {
@@ -8,8 +9,15 @@ import {
   type NeuralEventRecord,
 } from "./neural-event-hub.ts";
 import { createNeuralEventsStreamRouter } from "./neural-events-stream.ts";
+import {
+  configureNeuralEventNotifier,
+  publishNeuralEvent,
+  type StreamedNeuralEvent,
+} from "./neural-event-bus.ts";
+import { PostgresNeuralEventTransport } from "./neural-event-postgres.ts";
+import type { Pool } from "pg";
 
-function event(id: number): NeuralEventRecord {
+function event(id: number): StreamedNeuralEvent {
   return {
     id,
     origin: "runner",
@@ -74,6 +82,51 @@ function createSseReader(response: Response) {
   };
 }
 
+class FakePgListener extends EventEmitter {
+  channel: string | null = null;
+  private readonly remove: (client: FakePgListener) => void;
+
+  constructor(remove: (client: FakePgListener) => void) {
+    super();
+    this.remove = remove;
+  }
+
+  async query(statement: string): Promise<void> {
+    const listen = statement.match(/^(LISTEN|UNLISTEN) ([a-z_]+)$/);
+    if (listen) this.channel = listen[1] === "LISTEN" ? listen[2] : null;
+  }
+
+  release(): void {
+    this.remove(this);
+  }
+}
+
+class FakeSharedPostgres {
+  readonly rows = new Map<number, StreamedNeuralEvent>();
+  readonly listeners = new Set<FakePgListener>();
+  readonly pool = {
+    connect: async () => {
+      const client = new FakePgListener((listener) => this.listeners.delete(listener));
+      this.listeners.add(client);
+      return client;
+    },
+    query: async (statement: string, values?: unknown[]) => {
+      assert.match(statement, /pg_notify/);
+      const [channel, payload] = values ?? [];
+      for (const client of this.listeners) {
+        if (client.channel === channel) {
+          client.emit("notification", { channel, payload });
+        }
+      }
+      return { rows: [] };
+    },
+  } as unknown as Pick<Pool, "connect" | "query">;
+
+  async loadEvent(eventId: number): Promise<StreamedNeuralEvent | null> {
+    return this.rows.get(eventId) ?? null;
+  }
+}
+
 describe("GET /api/neural-events/stream", () => {
   it("delivers events over HTTP and replays only those after Last-Event-ID on reconnect", async () => {
     const persisted = [event(41)];
@@ -118,5 +171,55 @@ describe("GET /api/neural-events/stream", () => {
     });
 
     assert.deepEqual(replayCursors, [0, 41]);
+  });
+
+  it("delivers a writer instance's event to a client connected to another instance", async () => {
+    const postgres = new FakeSharedPostgres();
+    const readerHub = new NeuralEventHub();
+    const writer = new PostgresNeuralEventTransport({
+      pool: postgres.pool,
+      loadEvent: (id) => postgres.loadEvent(id),
+      onEvent: (item) => readerHub.publish(item),
+      instanceId: "writer-instance",
+    });
+    const reader = new PostgresNeuralEventTransport({
+      pool: postgres.pool,
+      loadEvent: (id) => postgres.loadEvent(id),
+      onEvent: (item) => readerHub.publish(item),
+      instanceId: "reader-instance",
+    });
+    const persistedEvent = event(77);
+
+    await Promise.all([writer.start(), reader.start()]);
+    configureNeuralEventNotifier((id) => writer.publish(id));
+    let replayStarted!: () => void;
+    const replayStartedPromise = new Promise<void>((resolve) => {
+      replayStarted = resolve;
+    });
+    const router = createNeuralEventsStreamRouter({
+      hub: readerHub,
+      loadEventsSince: async (cursor) => {
+        replayStarted();
+        return [...postgres.rows.values()].filter((item) => item.id > cursor);
+      },
+    });
+
+    try {
+      await withServer(router, async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/neural-events/stream`);
+        const stream = createSseReader(response);
+        await replayStartedPromise;
+        postgres.rows.set(persistedEvent.id, persistedEvent);
+        await publishNeuralEvent({
+          ...persistedEvent,
+          createdAt: String(persistedEvent.createdAt),
+        });
+        assert.deepEqual(await stream.nextEvent(), persistedEvent);
+        await stream.cancel();
+      });
+    } finally {
+      configureNeuralEventNotifier(async () => undefined);
+      await Promise.all([writer.stop(), reader.stop()]);
+    }
   });
 });
