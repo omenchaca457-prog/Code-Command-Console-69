@@ -153,6 +153,31 @@ paths:
         "502":
           description: Error al consultar DeepSeek
 
+  /chat:
+    post:
+      operationId: deepseekChatAlias
+      tags: [ai]
+      summary: Alias SSE de chat SQ-AI con contexto PostgreSQL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeepSeekChatInput"
+      responses:
+        "200":
+          description: Flujo SSE con fragmentos de respuesta
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          description: Solicitud inválida
+        "503":
+          description: Falta configurar OPENAI_API_KEY
+        "502":
+          description: Error al consultar DeepSeek
+
   /ai/explain:
     post:
       operationId: aiExplain

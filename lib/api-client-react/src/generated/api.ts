@@ -686,6 +686,92 @@ export const useDeepseekChat = <
 };
 
 /**
+ * @summary Alias SSE de chat SQ-AI con contexto PostgreSQL
+ */
+export const getDeepseekChatAliasUrl = () => {
+  return `/api/chat`;
+};
+
+export const deepseekChatAlias = async (
+  deepSeekChatInput: DeepSeekChatInput,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getDeepseekChatAliasUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(deepSeekChatInput),
+  });
+};
+
+export const getDeepseekChatAliasMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deepseekChatAlias>>,
+    TError,
+    { data: BodyType<DeepSeekChatInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deepseekChatAlias>>,
+  TError,
+  { data: BodyType<DeepSeekChatInput> },
+  TContext
+> => {
+  const mutationKey = ["deepseekChatAlias"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deepseekChatAlias>>,
+    { data: BodyType<DeepSeekChatInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return deepseekChatAlias(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeepseekChatAliasMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deepseekChatAlias>>
+>;
+export type DeepseekChatAliasMutationBody = BodyType<DeepSeekChatInput>;
+export type DeepseekChatAliasMutationError = ErrorType<void>;
+
+/**
+ * @summary Alias SSE de chat SQ-AI con contexto PostgreSQL
+ */
+export const useDeepseekChatAlias = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deepseekChatAlias>>,
+    TError,
+    { data: BodyType<DeepSeekChatInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deepseekChatAlias>>,
+  TError,
+  { data: BodyType<DeepSeekChatInput> },
+  TContext
+> => {
+  return useMutation(getDeepseekChatAliasMutationOptions(options));
+};
+
+/**
  * @summary Explain code using AI
  */
 export const getAiExplainUrl = () => {

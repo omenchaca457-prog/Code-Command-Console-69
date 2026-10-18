@@ -110,6 +110,18 @@ export const DeepseekChatBody = zod.object({
 });
 
 /**
+ * @summary Alias SSE de chat SQ-AI con contexto PostgreSQL
+ */
+export const deepseekChatAliasBodyPromptMax = 8000;
+
+export const deepseekChatAliasBodyContextMax = 30000;
+
+export const DeepseekChatAliasBody = zod.object({
+  prompt: zod.string().min(1).max(deepseekChatAliasBodyPromptMax),
+  context: zod.string().max(deepseekChatAliasBodyContextMax).nullish(),
+});
+
+/**
  * @summary Explain code using AI
  */
 export const AiExplainBody = zod.object({

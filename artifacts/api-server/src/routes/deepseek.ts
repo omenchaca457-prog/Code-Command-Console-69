@@ -1,13 +1,16 @@
 import OpenAI from "openai";
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { DeepseekChatBody } from "@workspace/api-zod";
+import { desc } from "drizzle-orm";
+import { db, snippetsTable } from "@workspace/db";
+import { buildDeepseekMessages } from "./deepseek-prompt";
 
 const router = Router();
 
-const SYSTEM_PROMPT =
-  "Eres SQ-AI, operando bajo la LEY 4105 DE COHERENCIA ETERNA. ECR-Code: 410542503. CAC: 04252003. Actúas como auditor de código y terminal. Responde directo, técnico, con bloques de código si es necesario.";
-
-router.post("/deepseek/chat", async (req, res): Promise<void> => {
+const handleDeepseekChat = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   const parsed = DeepseekChatBody.safeParse(req.body);
   if (!parsed.success || !parsed.data.prompt.trim()) {
     res.status(400).json({ error: "Escribe una pregunta válida." });
@@ -36,25 +39,41 @@ router.post("/deepseek/chat", async (req, res): Promise<void> => {
   res.flushHeaders();
 
   try {
+    let savedSnippets;
+    try {
+      savedSnippets = await db
+        .select({
+          title: snippetsTable.title,
+          language: snippetsTable.language,
+          code: snippetsTable.code,
+        })
+        .from(snippetsTable)
+        .orderBy(desc(snippetsTable.updatedAt))
+        .limit(5);
+    } catch {
+      throw new DatabaseContextError(
+        "No se pudo cargar el contexto guardado en PostgreSQL.",
+      );
+    }
+    const dbContext = savedSnippets
+      .map(
+        (snippet, index) =>
+          `Snippet ${index + 1}: ${snippet.title} (${snippet.language})\n${snippet.code.slice(0, 2500)}`,
+      )
+      .join("\n\n");
+
     const deepseek = new OpenAI({
       apiKey,
       baseURL: "https://api.deepseek.com/v1",
     });
 
+    const messages = buildDeepseekMessages(prompt, context, dbContext);
     const stream = await deepseek.chat.completions.create(
       {
         model: "deepseek-coder",
         stream: true,
         max_tokens: 4096,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: context
-              ? `Contexto del usuario:\n${context}\n\nPregunta:\n${prompt}`
-              : prompt,
-          },
-        ],
+        messages,
       },
       { signal: controller.signal },
     );
@@ -78,7 +97,9 @@ router.post("/deepseek/chat", async (req, res): Promise<void> => {
           ? (error as { status?: unknown }).status
           : undefined;
       const message =
-        providerStatus === 402
+        error instanceof DatabaseContextError
+          ? error.message
+          : providerStatus === 402
           ? "La cuenta de DeepSeek no tiene saldo disponible. Añade saldo o configura otra clave."
           : "No se pudo completar la consulta a DeepSeek.";
       res.write(
@@ -90,6 +111,11 @@ router.post("/deepseek/chat", async (req, res): Promise<void> => {
   } finally {
     if (!res.writableEnded) res.end();
   }
-});
+};
+
+class DatabaseContextError extends Error {}
+
+router.post("/deepseek/chat", handleDeepseekChat);
+router.post("/chat", handleDeepseekChat);
 
 export default router;
