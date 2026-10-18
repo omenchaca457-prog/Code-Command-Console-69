@@ -81,7 +81,7 @@ const DEEPSEEK_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "get_integrations_status",
-      description: "Lista los nombres y estados de las integraciones conectadas a Replit, sin revelar credenciales.",
+      description: "Devuelve el snapshot manual más reciente de Integrations de Replit, con fecha de captura; nunca revela credenciales ni lo presenta como tiempo real.",
       parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
     },
   },
