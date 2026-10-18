@@ -3,9 +3,9 @@ import { ArrowUpRight, BrainCircuit, Code2, Copy, Database, LoaderCircle, Search
 import { useAppContext } from "@/lib/app-context";
 import { useNeuralContext } from "@/lib/neural-context";
 import {
-  getNeuralEventDeliveryPresentation,
   type NeuralEventDeliveryStatus,
 } from "@/lib/cortex-event-delivery";
+import { CortexOrderOutcome } from "./cortex-order-outcome";
 
 type ProviderState = {
   response: string;
@@ -160,6 +160,8 @@ function ResponsePanel({
   icon: Icon,
   state,
   onCopy,
+  isFinalOrder = false,
+  deliveryStatus,
 }: {
   provider: string;
   tagline: string;
@@ -167,6 +169,8 @@ function ResponsePanel({
   icon: typeof Code2;
   state: ProviderState;
   onCopy: () => void;
+  isFinalOrder?: boolean;
+  deliveryStatus?: unknown;
 }) {
   const color = accent === "green" ? "#00ff41" : accent === "cyan" ? "#00e5ff" : "#b69cff";
   return (
@@ -204,10 +208,14 @@ function ResponsePanel({
           </div>
         )}
         {state.response ? (
-          <div className="whitespace-pre-wrap break-words font-mono text-[12px] leading-6 text-[#b4c0b9] sm:text-[13px]">
-            {state.response}
-            {state.loading && <span aria-label="Escribiendo" className="ml-1 inline-block h-3.5 w-1 animate-pulse align-middle" style={{ background: color }} />}
-          </div>
+          isFinalOrder ? (
+            <CortexOrderOutcome order={state.response} status={deliveryStatus} isLoading={state.loading} />
+          ) : (
+            <div className="whitespace-pre-wrap break-words font-mono text-[12px] leading-6 text-[#b4c0b9] sm:text-[13px]">
+              {state.response}
+              {state.loading && <span aria-label="Escribiendo" className="ml-1 inline-block h-3.5 w-1 animate-pulse align-middle" style={{ background: color }} />}
+            </div>
+          )
         ) : !state.loading && !state.error ? (
           <div className="flex flex-1 flex-col items-center justify-center py-5 text-center">
             <div className="mb-3 flex h-11 w-11 items-center justify-center border border-white/[0.07] bg-white/[0.02] text-[#4b5751]">
@@ -427,16 +435,17 @@ export default function Cortex() {
         <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 xl:gap-4">
           <ResponsePanel provider="DeepSeek" tagline="Lógica y código · en streaming" accent="green" icon={Code2} state={deepseek} onCopy={() => void navigator.clipboard.writeText(deepseek.response)} />
           <ResponsePanel provider="Gemini" tagline="Investigación y contexto" accent="cyan" icon={Search} state={gemini} onCopy={() => void navigator.clipboard.writeText(gemini.response)} />
-          <ResponsePanel provider="OpenAI · GPT-4o" tagline="Orquestador · sintetiza y ordena a los agentes" accent="violet" icon={BrainCircuit} state={openai} onCopy={() => void navigator.clipboard.writeText(openai.response)} />
+          <ResponsePanel
+            provider="OpenAI · GPT-4o"
+            tagline="Orquestador · sintetiza y ordena a los agentes"
+            accent="violet"
+            icon={BrainCircuit}
+            state={openai}
+            onCopy={() => void navigator.clipboard.writeText(openai.response)}
+            isFinalOrder
+            deliveryStatus={eventDeliveryStatus}
+          />
         </div>
-        {eventDeliveryStatus && (
-          <p
-            role="status"
-            className={`mt-3 border px-3 py-2 font-mono text-[10px] leading-5 ${getNeuralEventDeliveryPresentation(eventDeliveryStatus).className}`}
-          >
-            {getNeuralEventDeliveryPresentation(eventDeliveryStatus).message}
-          </p>
-        )}
 
         <form
           className="mt-4 border border-[#00ff41]/25 bg-[#060908] shadow-[0_0_24px_rgba(0,255,65,0.035)]"
