@@ -30,6 +30,7 @@ async function handleGeminiChat(
   res: Response,
 ) {
   const prompt = req.body?.prompt;
+  const context = typeof req.body?.context === "string" ? req.body.context.slice(0, 30_000) : "";
   if (typeof prompt !== "string" || !prompt.trim()) {
     res.status(400).json({ error: "Escribe una pregunta para Gemini." });
     return;
@@ -59,7 +60,7 @@ async function handleGeminiChat(
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `${GEMINI_SYSTEM_PROMPT}\n\nPregunta:\n${prompt.trim()}`,
+              text: `${GEMINI_SYSTEM_PROMPT}\n\nContexto real recopilado de la terminal:\n${context || "(no se proporcionó contexto)"}\n\nPregunta:\n${prompt.trim()}`,
             }],
           }],
         }),

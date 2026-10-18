@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { ArrowUpRight, BrainCircuit, Code2, Copy, LoaderCircle, Search, Send, X } from "lucide-react";
+import { ArrowUpRight, BrainCircuit, Code2, Copy, Database, LoaderCircle, Search, Send, X } from "lucide-react";
+import { useAppContext } from "@/lib/app-context";
+import { useNeuralContext } from "@/lib/neural-context";
 
 type ProviderState = {
   response: string;
@@ -9,15 +11,17 @@ type ProviderState = {
 
 const initialProviderState: ProviderState = { response: "", loading: false, error: "" };
 const DEEPSEEK_CONTEXT = "Eres el núcleo lógico. Analiza datos, matemáticas y código bajo la Ley 4105.";
+const CONTEXT_SOURCES = ["Editor", "Runner", "Agentes", "Library", "PostgreSQL", "Integrations", "Server Logs", "Webview Logs"];
 
 async function readDeepSeekStream(
   prompt: string,
   onDelta: (text: string) => void,
+  context: string,
 ) {
   const response = await fetch("/api/deepseek/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify({ prompt, context: DEEPSEEK_CONTEXT }),
+    body: JSON.stringify({ prompt, context: `${DEEPSEEK_CONTEXT}\n\nContexto recopilado:\n${context}` }),
   });
 
   if (!response.ok) {
@@ -61,11 +65,11 @@ async function readDeepSeekStream(
   if (!complete && buffer.trim()) consume(buffer);
 }
 
-async function requestGemini(prompt: string) {
+async function requestGemini(prompt: string, context: string) {
   const response = await fetch("/api/gemini/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ prompt, context }),
   });
   const body = await response.json().catch(() => null) as { text?: string; error?: string } | null;
   if (!response.ok || body?.error) {
@@ -169,37 +173,86 @@ function ResponsePanel({
 }
 
 export default function Cortex() {
+  const { currentCode, currentLanguage } = useAppContext();
+  const { events } = useNeuralContext();
   const [question, setQuestion] = useState("");
   const [deepseek, setDeepseek] = useState<ProviderState>(initialProviderState);
   const [gemini, setGemini] = useState<ProviderState>(initialProviderState);
+  const [collecting, setCollecting] = useState(false);
+  const [contextSources, setContextSources] = useState<string[]>([]);
+  const [learningCount, setLearningCount] = useState(0);
   const busy = deepseek.loading || gemini.loading;
 
   const submit = async () => {
     const prompt = question.trim();
     if (!prompt || busy) return;
     setQuestion("");
+    setCollecting(true);
     setDeepseek({ response: "", loading: true, error: "" });
     setGemini({ response: "", loading: true, error: "" });
 
-    const deepseekTask = readDeepSeekStream(prompt, (delta) => {
-      setDeepseek((current) => ({ ...current, response: current.response + delta }));
-    }).then(
-      () => setDeepseek((current) => ({ ...current, loading: false })),
-      (error: unknown) => setDeepseek((current) => ({
-        ...current,
-        loading: false,
-        error: error instanceof Error ? error.message : "Error de conexión con DeepSeek.",
-      })),
-    );
-    const geminiTask = requestGemini(prompt).then(
-      (text) => setGemini({ response: text, loading: false, error: "" }),
-      (error: unknown) => setGemini((current) => ({
-        ...current,
-        loading: false,
-        error: error instanceof Error ? error.message : "Error de conexión con Gemini.",
-      })),
-    );
-    await Promise.all([deepseekTask, geminiTask]);
+    let deepseekText = "";
+    let geminiText = "";
+    try {
+      const contextResponse = await fetch("/api/cortex/context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          editor: { language: currentLanguage, code: currentCode },
+          activity: events.slice(0, 12).map(({ origin, eventType, content, createdAt }) => ({
+            origin, eventType, content, createdAt,
+          })),
+        }),
+      });
+      const contextBody = await contextResponse.json().catch(() => null) as {
+        context?: unknown; sources?: string[]; learningCount?: number; error?: string;
+      } | null;
+      if (!contextResponse.ok || !contextBody?.context) {
+        throw new Error(contextBody?.error || "No se pudo recopilar el contexto de la terminal.");
+      }
+      const context = JSON.stringify(contextBody.context);
+      setContextSources(contextBody.sources ?? CONTEXT_SOURCES);
+      setLearningCount(contextBody.learningCount ?? 0);
+      setCollecting(false);
+
+      const deepseekTask = readDeepSeekStream(prompt, (delta) => {
+        deepseekText += delta;
+        setDeepseek((current) => ({ ...current, response: current.response + delta }));
+      }, context).then(
+        () => setDeepseek((current) => ({ ...current, loading: false })),
+        (error: unknown) => setDeepseek((current) => ({
+          ...current,
+          loading: false,
+          error: error instanceof Error ? error.message : "Error de conexión con DeepSeek.",
+        })),
+      );
+      const geminiTask = requestGemini(prompt, context).then(
+        (text) => {
+          geminiText = text;
+          setGemini({ response: text, loading: false, error: "" });
+        },
+        (error: unknown) => setGemini((current) => ({
+          ...current,
+          loading: false,
+          error: error instanceof Error ? error.message : "Error de conexión con Gemini.",
+        })),
+      );
+      await Promise.all([deepseekTask, geminiTask]);
+      if (deepseekText || geminiText) {
+        const saved = await fetch("/api/cortex/learning", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: prompt, deepseek: deepseekText, gemini: geminiText }),
+        });
+        if (saved.ok) setLearningCount((count) => count + 1);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudo recopilar el contexto.";
+      setDeepseek((current) => ({ ...current, loading: false, error: message }));
+      setGemini((current) => ({ ...current, loading: false, error: message }));
+    } finally {
+      setCollecting(false);
+    }
   };
 
   return (
@@ -221,9 +274,31 @@ export default function Cortex() {
           </div>
           <div className="flex items-center gap-2 border border-[#00ff41]/15 bg-[#00ff41]/[0.035] px-3 py-2 font-mono text-[9px] uppercase tracking-[0.15em] text-[#83a88e]">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#00ff41]" />
-            Dos canales activos
+            {collecting ? "Recopilando contexto" : "Dos canales activos"}
           </div>
         </div>
+
+        <section aria-label="Conexiones de contexto y memoria" className="mb-4 border border-white/[0.07] bg-[#090d0c] px-4 py-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.17em] text-[#8c9a91]">
+              <Database aria-hidden="true" className="h-3.5 w-3.5 text-[#00e5ff]" />
+              Contexto multi-interfaz
+            </div>
+            <span className="font-mono text-[9px] text-[#56625b]">
+              Memoria persistente: {learningCount} {learningCount === 1 ? "sesión" : "sesiones"} · no entrena los modelos
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {(contextSources.length ? contextSources : CONTEXT_SOURCES).map((source) => (
+              <span key={source} className="border border-[#00e5ff]/10 bg-[#00e5ff]/[0.025] px-2 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-[#71837e]">
+                {source}
+              </span>
+            ))}
+            <span className="border border-white/[0.06] px-2 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-[#4f5c54]">
+              Integrations: snapshot manual
+            </span>
+          </div>
+        </section>
 
         <div className="mb-3 flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.18em] text-[#4c5851]">
           <span className="h-px w-5 bg-[#00ff41]/35" />
@@ -272,7 +347,7 @@ export default function Cortex() {
           </div>
           <div id="cortex-input-hint" className="flex justify-between border-t border-white/[0.05] px-4 py-2 font-mono text-[9px] text-[#46514a]">
             <span>ENTER para enviar <span className="mx-1 text-[#303a34]">·</span> SHIFT+ENTER para nueva línea</span>
-            <span>{busy ? "Awaiting both channels…" : "Protocol 4105"}</span>
+            <span>{collecting ? "Recopilando estado de la terminal…" : busy ? "Ambas IA procesando…" : "Protocol 4105"}</span>
           </div>
         </form>
         <div aria-live="polite" className="sr-only">

@@ -9,6 +9,7 @@ import geminiRouter from "./gemini";
 import neuralEventsRouter from "./neural-events";
 import messagesRouter from "./messages";
 import diagnosticsRouter from "./diagnostics";
+import cortexRouter from "./cortex";
 
 const router: IRouter = Router();
 
@@ -21,6 +22,7 @@ router.use(geminiRouter);
 router.use(neuralEventsRouter);
 router.use(messagesRouter);
 router.use(diagnosticsRouter);
+router.use(cortexRouter);
 router.use(autorunRouter);
 
 export default router;
