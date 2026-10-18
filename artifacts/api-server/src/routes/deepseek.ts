@@ -6,8 +6,45 @@ import {
   buildDeepseekMessages,
   formatConversationContext,
 } from "./deepseek-prompt";
+import { executeDeepseekTool } from "./deepseek-tools";
 
 const router = Router();
+const MAX_TOOL_ROUNDS = 5;
+const MAX_TOOL_CALLS = 10;
+
+const DEEPSEEK_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  {
+    type: "function",
+    function: {
+      name: "execute_sql",
+      description:
+        "Ejecuta una consulta SELECT de solo lectura en las tablas agents, conversations, messages o snippets.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Consulta SELECT de una sola sentencia." },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_current_code",
+      description: "Lee un archivo de código permitido usando una ruta relativa a la raíz del proyecto.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Ejemplo: artifacts/api-server/src/routes/ai.ts." },
+        },
+        required: ["path"],
+        additionalProperties: false,
+      },
+    },
+  },
+];
 
 const handleDeepseekChat = async (
   req: Request,
@@ -61,27 +98,105 @@ const handleDeepseekChat = async (
       baseURL: "https://api.deepseek.com/v1",
     });
 
-    const messages = buildDeepseekMessages(prompt, context, dbContext);
-    const stream = await deepseek.chat.completions.create(
-      {
-        model: "deepseek-coder",
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
+      buildDeepseekMessages(prompt, context, dbContext);
+    let toolCallsExecuted = 0;
+    let completed = false;
+
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+      const request = {
+        model: "deepseek-flash",
         stream: true,
         max_tokens: 4096,
         messages,
-      },
-      { signal: controller.signal },
-    );
+        tools: DEEPSEEK_TOOLS,
+        tool_choice: "auto",
+        extra_body: { thinking: { type: "disabled" } },
+      } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
+      const stream = await deepseek.chat.completions.create(
+        request,
+        { signal: controller.signal },
+      );
 
-    for await (const chunk of stream) {
+      let assistantText = "";
+      const pendingCalls = new Map<
+        number,
+        { id: string; name: string; arguments: string }
+      >();
+
+      for await (const chunk of stream) {
+        if (controller.signal.aborted || res.destroyed) break;
+        const delta = chunk.choices[0]?.delta;
+        if (typeof delta?.content === "string" && delta.content.length > 0) {
+          assistantText += delta.content;
+          res.write(`data: ${JSON.stringify({ delta: delta.content })}\n\n`);
+        }
+
+        for (const toolDelta of delta?.tool_calls ?? []) {
+          const pending = pendingCalls.get(toolDelta.index) ?? {
+            id: "",
+            name: "",
+            arguments: "",
+          };
+          pending.id += toolDelta.id ?? "";
+          pending.name += toolDelta.function?.name ?? "";
+          pending.arguments += toolDelta.function?.arguments ?? "";
+          pendingCalls.set(toolDelta.index, pending);
+        }
+      }
+
       if (controller.signal.aborted || res.destroyed) break;
-      const delta = chunk.choices[0]?.delta?.content;
-      if (typeof delta === "string" && delta.length > 0) {
-        res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+
+      const calls = [...pendingCalls.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([, call]) => ({
+          id: call.id,
+          type: "function" as const,
+          function: { name: call.name, arguments: call.arguments },
+        }));
+
+      if (calls.length === 0) {
+        res.write("data: [DONE]\n\n");
+        completed = true;
+        break;
+      }
+
+      messages.push({
+        role: "assistant",
+        content: assistantText || null,
+        tool_calls: calls,
+      });
+
+      for (const call of calls) {
+        if (!call.id || !call.function.name) continue;
+        if (toolCallsExecuted >= MAX_TOOL_CALLS) {
+          res.write(
+            `data: ${JSON.stringify({ error: "Se alcanzó el límite de acciones de SQ-AI." })}\n\n`,
+          );
+          completed = true;
+          break;
+        }
+        toolCallsExecuted += 1;
+        const result = await executeDeepseekTool(
+          call.function.name,
+          call.function.arguments,
+        );
+        messages.push({ role: "tool", tool_call_id: call.id, content: result });
+      }
+
+      if (completed) break;
+      if (round === MAX_TOOL_ROUNDS - 1) {
+        res.write(
+          `data: ${JSON.stringify({ error: "Se alcanzó el límite de rondas de herramientas." })}\n\n`,
+        );
+        completed = true;
       }
     }
 
-    if (!controller.signal.aborted && !res.destroyed) {
-      res.write("data: [DONE]\n\n");
+    if (!completed && !controller.signal.aborted && !res.destroyed) {
+      res.write(
+        `data: ${JSON.stringify({ error: "No se pudo completar el ciclo de herramientas." })}\n\n`,
+      );
     }
   } catch (error) {
     if (!controller.signal.aborted && !res.destroyed) {
