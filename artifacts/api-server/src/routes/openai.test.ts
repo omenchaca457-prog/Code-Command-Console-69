@@ -24,9 +24,13 @@ describe("POST /openai/chat", () => {
           updatedAt: new Date("2026-01-01T00:00:00Z"),
         }];
       },
-      streamCompletion: async function* ({ prompt, agents }) {
+      streamCompletion: async function* ({ prompt, agents, agentResults }) {
         assert.equal(prompt, "Coordina los agentes");
         assert.equal(agents[0]?.id, "worker-1");
+        assert.deepEqual(agentResults.map(({ agent, status }) => ({ agent, status })), [
+          { agent: "DeepSeek", status: "completed" },
+          { agent: "Gemini", status: "failed" },
+        ]);
         yield { choices: [{ delta: { content: "Prioriza " } }] };
         yield { choices: [{ delta: { content: "el agente activo." } }] };
       },
@@ -47,7 +51,13 @@ describe("POST /openai/chat", () => {
       const response = await fetch(`http://127.0.0.1:${address.port}/openai/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: "Coordina los agentes" }),
+        body: JSON.stringify({
+          prompt: "Coordina los agentes",
+          agentResults: [
+            { agent: "DeepSeek", status: "completed", response: "Hallazgo técnico." },
+            { agent: "Gemini", status: "failed", response: "", error: "No disponible." },
+          ],
+        }),
       });
       assert.equal(response.status, 200);
       assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/);

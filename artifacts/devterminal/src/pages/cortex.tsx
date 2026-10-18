@@ -79,6 +79,73 @@ async function requestGemini(prompt: string, context: string) {
   return body.text;
 }
 
+type OpenAiAgentResult = {
+  agent: "DeepSeek" | "Gemini";
+  status: "completed" | "failed";
+  response: string;
+  error?: string;
+};
+
+async function readOpenAiStream(
+  prompt: string,
+  agentResults: OpenAiAgentResult[],
+  onDelta: (text: string) => void,
+) {
+  const response = await fetch("/api/openai/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify({ prompt, agentResults }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { error?: string } | null;
+    throw new Error(body?.error || `Solicitud rechazada (${response.status}).`);
+  }
+  if (!response.body) throw new Error("OpenAI no devolvió un flujo de respuesta.");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let eventStatus = "delivered";
+  let complete = false;
+  const consume = (frame: string) => {
+    const data = frame.split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n");
+    if (!data) return;
+    const payload = JSON.parse(data) as {
+      type?: string;
+      content?: string;
+      error?: string;
+      eventStatus?: string;
+    };
+    if (payload.type === "error" || payload.error) {
+      throw new Error(payload.error || "OpenAI no pudo completar la orden.");
+    }
+    if (payload.type === "delta" && payload.content) onDelta(payload.content);
+    if (payload.type === "done") {
+      eventStatus = payload.eventStatus || "delivered";
+      complete = true;
+    }
+  };
+
+  while (!complete) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split(/\r?\n\r?\n/);
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      consume(frame);
+      if (complete) break;
+    }
+  }
+  buffer += decoder.decode();
+  if (!complete && buffer.trim()) consume(buffer);
+  if (!complete) throw new Error("El flujo de OpenAI se interrumpió antes de confirmar la orden.");
+  return eventStatus;
+}
+
 function ResponsePanel({
   provider,
   tagline,
@@ -89,13 +156,12 @@ function ResponsePanel({
 }: {
   provider: string;
   tagline: string;
-  accent: "green" | "cyan";
+  accent: "green" | "cyan" | "violet";
   icon: typeof Code2;
   state: ProviderState;
   onCopy: () => void;
 }) {
-  const green = accent === "green";
-  const color = green ? "#00ff41" : "#00e5ff";
+  const color = accent === "green" ? "#00ff41" : accent === "cyan" ? "#00e5ff" : "#b69cff";
   return (
     <section
       aria-label={`${provider} ${tagline}`}
@@ -165,7 +231,7 @@ function ResponsePanel({
         )}
       </div>
       <footer className="flex items-center justify-between border-t border-white/[0.05] px-4 py-2.5 font-mono text-[9px] uppercase tracking-[0.14em] text-[#46514b] sm:px-5">
-        <span>{green ? "LÓGICA / CÓDIGO" : "INVESTIGACIÓN / CONTEXTO"}</span>
+        <span>{accent === "green" ? "ANÁLISIS / CÓDIGO" : accent === "cyan" ? "ANÁLISIS / CONTEXTO" : "COORDINACIÓN / ORDEN FINAL"}</span>
         <span>{state.response ? `${state.response.length} caracteres` : "Ley 4105"}</span>
       </footer>
     </section>
@@ -178,10 +244,11 @@ export default function Cortex() {
   const [question, setQuestion] = useState("");
   const [deepseek, setDeepseek] = useState<ProviderState>(initialProviderState);
   const [gemini, setGemini] = useState<ProviderState>(initialProviderState);
+  const [openai, setOpenai] = useState<ProviderState>(initialProviderState);
   const [collecting, setCollecting] = useState(false);
   const [contextSources, setContextSources] = useState<string[]>([]);
   const [learningCount, setLearningCount] = useState(0);
-  const busy = deepseek.loading || gemini.loading;
+  const busy = collecting || deepseek.loading || gemini.loading || openai.loading;
 
   const submit = async () => {
     const prompt = question.trim();
@@ -190,9 +257,12 @@ export default function Cortex() {
     setCollecting(true);
     setDeepseek({ response: "", loading: true, error: "" });
     setGemini({ response: "", loading: true, error: "" });
+    setOpenai({ response: "", loading: false, error: "" });
 
     let deepseekText = "";
     let geminiText = "";
+    let deepseekError = "";
+    let geminiError = "";
     try {
       const contextResponse = await fetch("/api/cortex/context", {
         method: "POST",
@@ -223,7 +293,7 @@ export default function Cortex() {
         (error: unknown) => setDeepseek((current) => ({
           ...current,
           loading: false,
-          error: error instanceof Error ? error.message : "Error de conexión con DeepSeek.",
+          error: (deepseekError = error instanceof Error ? error.message : "Error de conexión con DeepSeek."),
         })),
       );
       const geminiTask = requestGemini(prompt, context).then(
@@ -234,15 +304,53 @@ export default function Cortex() {
         (error: unknown) => setGemini((current) => ({
           ...current,
           loading: false,
-          error: error instanceof Error ? error.message : "Error de conexión con Gemini.",
+          error: (geminiError = error instanceof Error ? error.message : "Error de conexión con Gemini."),
         })),
       );
       await Promise.all([deepseekTask, geminiTask]);
-      if (deepseekText || geminiText) {
+      const agentResults: OpenAiAgentResult[] = [
+        {
+          agent: "DeepSeek",
+          status: deepseekText ? "completed" : "failed",
+          response: deepseekText,
+          ...(deepseekError ? { error: deepseekError } : {}),
+        },
+        {
+          agent: "Gemini",
+          status: geminiText ? "completed" : "failed",
+          response: geminiText,
+          ...(geminiError ? { error: geminiError } : {}),
+        },
+      ];
+      setOpenai({ response: "", loading: true, error: "" });
+      let openaiText = "";
+      let openaiError = "";
+      try {
+        const eventStatus = await readOpenAiStream(prompt, agentResults, (delta) => {
+          openaiText += delta;
+          setOpenai((current) => ({ ...current, response: current.response + delta }));
+        });
+        setOpenai((current) => ({
+          ...current,
+          loading: false,
+          error: eventStatus === "delivered" ? "" : eventStatus === "persisted_only"
+            ? "La orden está lista y el evento se guardó; su difusión en vivo quedó pendiente de reconexión."
+            : "La orden está lista, pero no se pudo guardar el evento OpenAI-Master.",
+        }));
+      } catch (error) {
+        openaiError = error instanceof Error ? error.message : "Error de conexión con OpenAI.";
+        setOpenai((current) => ({ ...current, loading: false, error: openaiError }));
+      }
+      if (deepseekText || geminiText || openaiText) {
         const saved = await fetch("/api/cortex/learning", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question: prompt, deepseek: deepseekText, gemini: geminiText }),
+          body: JSON.stringify({
+            question: prompt,
+            deepseek: deepseekText,
+            gemini: geminiText,
+            openai: openaiText,
+          }),
         });
         if (saved.ok) setLearningCount((count) => count + 1);
       }
@@ -250,6 +358,7 @@ export default function Cortex() {
       const message = error instanceof Error ? error.message : "No se pudo recopilar el contexto.";
       setDeepseek((current) => ({ ...current, loading: false, error: message }));
       setGemini((current) => ({ ...current, loading: false, error: message }));
+      setOpenai((current) => ({ ...current, loading: false }));
     } finally {
       setCollecting(false);
     }
@@ -269,12 +378,12 @@ export default function Cortex() {
               CORTEX MULTI-IA 4105
             </h1>
             <p className="mt-2 max-w-2xl font-mono text-[10px] leading-5 text-[#65716a] sm:text-[11px]">
-              Una pregunta. Dos núcleos especializados. Compara razonamiento y contexto en paralelo.
+              DeepSeek y Gemini analizan en paralelo; OpenAI coordina sus resultados y emite la orden final.
             </p>
           </div>
           <div className="flex items-center gap-2 border border-[#00ff41]/15 bg-[#00ff41]/[0.035] px-3 py-2 font-mono text-[9px] uppercase tracking-[0.15em] text-[#83a88e]">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#00ff41]" />
-            {collecting ? "Recopilando contexto" : "Dos canales activos"}
+            {collecting ? "Recopilando contexto" : "2 agentes → 1 orquestador"}
           </div>
         </div>
 
@@ -302,12 +411,13 @@ export default function Cortex() {
 
         <div className="mb-3 flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.18em] text-[#4c5851]">
           <span className="h-px w-5 bg-[#00ff41]/35" />
-          Respuestas comparadas
-          <span className="text-[#313a35]">/ 01—02</span>
+          Análisis paralelo + coordinación final
+          <span className="text-[#313a35]">/ 01—03</span>
         </div>
-        <div className="grid flex-1 grid-cols-1 gap-3 lg:grid-cols-2 lg:gap-4">
+        <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 xl:gap-4">
           <ResponsePanel provider="DeepSeek" tagline="Lógica y código · en streaming" accent="green" icon={Code2} state={deepseek} onCopy={() => void navigator.clipboard.writeText(deepseek.response)} />
           <ResponsePanel provider="Gemini" tagline="Investigación y contexto" accent="cyan" icon={Search} state={gemini} onCopy={() => void navigator.clipboard.writeText(gemini.response)} />
+          <ResponsePanel provider="OpenAI · GPT-4o" tagline="Orquestador · sintetiza y ordena a los agentes" accent="violet" icon={BrainCircuit} state={openai} onCopy={() => void navigator.clipboard.writeText(openai.response)} />
         </div>
 
         <form
@@ -316,8 +426,8 @@ export default function Cortex() {
         >
           <label htmlFor="cortex-question" className="flex items-center gap-2 border-b border-white/[0.055] px-4 py-2.5 font-mono text-[9px] uppercase tracking-[0.17em] text-[#718078]">
             <span className="h-1 w-1 bg-[#00ff41]" />
-            Pregunta compartida
-            <span className="ml-auto text-[#414b45]">Ambos canales reciben la misma consulta</span>
+            Instrucción para el enjambre
+            <span className="ml-auto text-[#414b45]">OpenAI recibe la consulta y los resultados de ambos agentes</span>
           </label>
           <div className="flex items-end">
             <textarea
@@ -330,7 +440,7 @@ export default function Cortex() {
                   void submit();
                 }
               }}
-              placeholder="// Escribe una pregunta para ambas IA…"
+              placeholder="// Escribe una instrucción para DeepSeek, Gemini y su orquestador…"
               rows={2}
               disabled={busy}
               className="min-h-[76px] flex-1 resize-y bg-transparent px-4 py-3 font-mono text-xs leading-5 text-[#cbd5ce] placeholder:text-[#3c4640] focus:outline-none disabled:opacity-50 sm:min-h-[86px] sm:text-[13px]"
@@ -347,14 +457,16 @@ export default function Cortex() {
           </div>
           <div id="cortex-input-hint" className="flex justify-between border-t border-white/[0.05] px-4 py-2 font-mono text-[9px] text-[#46514a]">
             <span>ENTER para enviar <span className="mx-1 text-[#303a34]">·</span> SHIFT+ENTER para nueva línea</span>
-            <span>{collecting ? "Recopilando estado de la terminal…" : busy ? "Ambas IA procesando…" : "Protocol 4105"}</span>
+            <span>{collecting ? "Recopilando estado de la terminal…" : deepseek.loading || gemini.loading ? "DeepSeek + Gemini analizan…" : openai.loading ? "OpenAI prepara la orden final…" : "Protocol 4105"}</span>
           </div>
         </form>
         <div aria-live="polite" className="sr-only">
           {deepseek.loading && "DeepSeek is processing"}
           {gemini.loading && "Gemini is processing"}
+          {openai.loading && "OpenAI is coordinating the agents"}
           {!deepseek.loading && deepseek.response && "DeepSeek response complete"}
           {!gemini.loading && gemini.response && "Gemini response complete"}
+          {!openai.loading && openai.response && "OpenAI final order complete"}
         </div>
       </div>
     </div>

@@ -23,6 +23,12 @@ type AgentState = {
 
 type ChatChunk = { choices: Array<{ delta: { content?: string | null } }> };
 type DecisionEventStatus = "delivered" | "persisted_only" | "persistence_failed";
+type AgentResult = {
+  agent: string;
+  status: "completed" | "failed";
+  response: string;
+  error?: string;
+};
 
 type OpenAiRouteDependencies = {
   getApiKey: () => string | undefined;
@@ -30,6 +36,7 @@ type OpenAiRouteDependencies = {
   streamCompletion: (input: {
     prompt: string;
     agents: AgentState[];
+    agentResults: AgentResult[];
   }) => AsyncIterable<ChatChunk>;
   persistAndPublishDecision: (content: string) => Promise<DecisionEventStatus>;
 };
@@ -60,7 +67,7 @@ const defaultDependencies: OpenAiRouteDependencies = {
       .from(agentsTable)
       .orderBy(asc(agentsTable.updatedAt));
   },
-  streamCompletion: async function* ({ prompt, agents }) {
+  streamCompletion: async function* ({ prompt, agents, agentResults }) {
     const apiKey = process.env.OPENAI_API_KEY || process.env.openIA;
     if (!apiKey) throw new Error("OPENAI_API_KEY is not configured");
     const client = new OpenAI({ apiKey });
@@ -71,7 +78,10 @@ const defaultDependencies: OpenAiRouteDependencies = {
         { role: "system", content: SYSTEM_PROMPT },
         {
           role: "user",
-          content: `Estado actual de agentes (PostgreSQL):\n${JSON.stringify(agents)}\n\nSolicitud de coordinación:\n${prompt}`,
+          content:
+            `Estado actual de agentes (PostgreSQL):\n${JSON.stringify(agents)}\n\n` +
+            `Resultados de los agentes paralelos:\n${JSON.stringify(agentResults)}\n\n` +
+            `Solicitud de coordinación:\n${prompt}`,
         },
       ],
     });
@@ -130,6 +140,23 @@ export function createOpenAiRouter(
       res.status(413).json({ error: "La instrucción supera el límite permitido." });
       return;
     }
+    const rawAgentResults = req.body?.agentResults;
+    if (rawAgentResults !== undefined && (
+      !Array.isArray(rawAgentResults) ||
+      rawAgentResults.length > 4 ||
+      rawAgentResults.some((item) =>
+        !item || typeof item !== "object" ||
+        typeof item.agent !== "string" ||
+        !["completed", "failed"].includes(item.status) ||
+        typeof item.response !== "string" ||
+        item.response.length > 8_000 ||
+        (item.error !== undefined && (typeof item.error !== "string" || item.error.length > 500))
+      )
+    )) {
+      res.status(400).json({ error: "Resultados de agentes inválidos." });
+      return;
+    }
+    const agentResults = (rawAgentResults ?? []) as AgentResult[];
     if (!dependencies.getApiKey()) {
       res.status(503).json({
         error: "OpenAI no está configurado. Añade OPENAI_API_KEY en Secrets (o usa openIA).",
@@ -140,7 +167,11 @@ export function createOpenAiRouter(
     let generationCompleted = false;
     try {
       const agents = await dependencies.loadAgentStates();
-      const stream = dependencies.streamCompletion({ prompt: prompt.trim(), agents });
+      const stream = dependencies.streamCompletion({
+        prompt: prompt.trim(),
+        agents,
+        agentResults,
+      });
       res.status(200).set({
         "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",

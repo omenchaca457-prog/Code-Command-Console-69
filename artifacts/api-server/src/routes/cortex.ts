@@ -75,7 +75,7 @@ export function createCortexRouter() {
   });
 
   router.post("/cortex/learning", async (req, res) => {
-    const { question, deepseek, gemini } = req.body ?? {};
+    const { question, deepseek, gemini, openai } = req.body ?? {};
     if (typeof question !== "string" || !question.trim() ||
         (typeof deepseek !== "string" && typeof gemini !== "string")) {
       res.status(400).json({ error: "Se requiere la pregunta y al menos una respuesta." });
@@ -85,6 +85,7 @@ export function createCortexRouter() {
       question: question.trim().slice(0, 1000),
       deepseek: typeof deepseek === "string" ? deepseek.slice(0, 1500) : "",
       gemini: typeof gemini === "string" ? gemini.slice(0, 1500) : "",
+      openai: typeof openai === "string" ? openai.slice(0, 1500) : "",
     });
     try {
       const { rows } = await pool.query<{
