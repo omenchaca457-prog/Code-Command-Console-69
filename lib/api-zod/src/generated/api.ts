@@ -86,16 +86,46 @@ export const GetRecentSnippetsResponse = zod.array(
 /**
  * @summary Chat with AI assistant
  */
+export const aiChatBodyAgentIdMax = 64;
+
+export const aiChatBodyAgentIdRegExp = new RegExp("^[a-z0-9_-]+$");
+export const aiChatBodyAgentNameMax = 80;
+
+export const aiChatBodyAgentRolePromptMax = 1000;
+
 export const AiChatBody = zod.object({
   message: zod.string(),
   context: zod.string().nullish(),
   language: zod.string().nullish(),
+  agentId: zod
+    .string()
+    .max(aiChatBodyAgentIdMax)
+    .regex(aiChatBodyAgentIdRegExp)
+    .optional(),
+  agentName: zod.string().max(aiChatBodyAgentNameMax).optional(),
+  agentRolePrompt: zod.string().max(aiChatBodyAgentRolePromptMax).optional(),
 });
 
 export const AiChatResponse = zod.object({
   response: zod.string(),
   conversationId: zod.number(),
+  omega: zod.number().nullish(),
+  xp: zod.number().optional(),
+  analysisStatus: zod.enum(["rewarded", "review", "failed"]).optional(),
 });
+
+/**
+ * @summary Get persisted agent progress
+ */
+export const GetAgentsResponseItem = zod.object({
+  id: zod.string(),
+  name: zod.string(),
+  xp: zod.number(),
+  failedAnalyses: zod.number(),
+  omega: zod.number().nullish(),
+  lastFailure: zod.string().nullish(),
+});
+export const GetAgentsResponse = zod.array(GetAgentsResponseItem);
 
 /**
  * @summary Consultar DeepSeek con respuesta en streaming SSE

@@ -10,4 +10,13 @@ export interface AiChatRequest {
   message: string;
   context?: string | null;
   language?: string | null;
+  /**
+   * @maxLength 64
+   * @pattern ^[a-z0-9_-]+$
+   */
+  agentId?: string;
+  /** @maxLength 80 */
+  agentName?: string;
+  /** @maxLength 1000 */
+  agentRolePrompt?: string;
 }

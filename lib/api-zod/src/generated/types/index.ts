@@ -6,8 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./agentProgress";
 export * from "./aiChatRequest";
 export * from "./aiChatResponse";
+export * from "./aiChatResponseAnalysisStatus";
 export * from "./aiCodeResponse";
 export * from "./aiExplainRequest";
 export * from "./aiImproveRequest";

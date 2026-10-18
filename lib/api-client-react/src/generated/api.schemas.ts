@@ -82,11 +82,41 @@ export interface AiChatRequest {
   message: string;
   context?: string | null;
   language?: string | null;
+  /**
+   * @maxLength 64
+   * @pattern ^[a-z0-9_-]+$
+   */
+  agentId?: string;
+  /** @maxLength 80 */
+  agentName?: string;
+  /** @maxLength 1000 */
+  agentRolePrompt?: string;
 }
+
+export type AiChatResponseAnalysisStatus =
+  (typeof AiChatResponseAnalysisStatus)[keyof typeof AiChatResponseAnalysisStatus];
+
+export const AiChatResponseAnalysisStatus = {
+  rewarded: "rewarded",
+  review: "review",
+  failed: "failed",
+} as const;
 
 export interface AiChatResponse {
   response: string;
   conversationId: number;
+  omega?: number | null;
+  xp?: number;
+  analysisStatus?: AiChatResponseAnalysisStatus;
+}
+
+export interface AgentProgress {
+  id: string;
+  name: string;
+  xp: number;
+  failedAnalyses: number;
+  omega?: number | null;
+  lastFailure?: string | null;
 }
 
 export interface DeepSeekChatInput {

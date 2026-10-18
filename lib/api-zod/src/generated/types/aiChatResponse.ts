@@ -5,8 +5,12 @@
  * DevTerminal API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AiChatResponseAnalysisStatus } from "./aiChatResponseAnalysisStatus";
 
 export interface AiChatResponse {
   response: string;
   conversationId: number;
+  omega?: number | null;
+  xp?: number;
+  analysisStatus?: AiChatResponseAnalysisStatus;
 }

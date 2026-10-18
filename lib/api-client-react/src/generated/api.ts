@@ -17,6 +17,7 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AgentProgress,
   AiChatRequest,
   AiChatResponse,
   AiCodeResponse,
@@ -598,6 +599,73 @@ export const useAiChat = <
 > => {
   return useMutation(getAiChatMutationOptions(options));
 };
+
+/**
+ * @summary Get persisted agent progress
+ */
+export const getGetAgentsUrl = () => {
+  return `/api/agents`;
+};
+
+export const getAgents = async (
+  options?: RequestInit,
+): Promise<AgentProgress[]> => {
+  return customFetch<AgentProgress[]>(getGetAgentsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAgentsQueryKey = () => {
+  return [`/api/agents`] as const;
+};
+
+export const getGetAgentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAgents>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getAgents>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAgentsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAgents>>> = ({
+    signal,
+  }) => getAgents({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAgents>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAgentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAgents>>
+>;
+export type GetAgentsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get persisted agent progress
+ */
+
+export function useGetAgents<
+  TData = Awaited<ReturnType<typeof getAgents>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getAgents>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAgentsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Consultar DeepSeek con respuesta en streaming SSE

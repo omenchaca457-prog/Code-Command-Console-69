@@ -78,6 +78,7 @@ type Agent = {
   status: "idle" | "thinking" | "done" | "error";
   messages: AgentMessage[];
   coherence: number;
+  xp: number;
   iterations: number;
 };
 
@@ -88,7 +89,8 @@ function makeAgent(role: AgentRole): Agent {
     role,
     status: "idle",
     messages: [],
-    coherence: 0.1 + Math.random() * 0.3,
+    coherence: 0,
+    xp: 0,
     iterations: 0,
   };
 }
@@ -106,6 +108,32 @@ export default function Agents() {
   const { currentCode, currentLanguage } = useAppContext();
   const { toast } = useToast();
   const evolveTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${BASE_URL}/api/agents`, { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error("No se pudo cargar XP de agentes.");
+        return response.json() as Promise<Array<{ id: string; xp: number; omega: number | null }>>;
+      })
+      .then(records => {
+        const byId = new Map(records.map(record => [record.id, record]));
+        setAgents(current =>
+          current.map(agent => {
+            const record = byId.get(agent.role.id);
+            return record
+              ? { ...agent, xp: record.xp, coherence: record.omega ?? 0 }
+              : agent;
+          }),
+        );
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          toast({ title: "No se pudo cargar el progreso guardado de los agentes." });
+        }
+      });
+    return () => controller.abort();
+  }, [toast]);
 
   const totalCoherence = agents.reduce((s, a) => s + a.coherence, 0) / Math.max(1, agents.length);
 
@@ -127,24 +155,24 @@ export default function Agents() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: `[AGENT:${agent.role.name}] ${agent.role.systemPrompt}\n\nTarea: ${msg}`,
+          message: msg,
           context: code.slice(0, 1000),
-          language: currentLanguage
+          language: currentLanguage,
+          agentId: agent.role.id,
+          agentName: agent.role.name,
+          agentRolePrompt: agent.role.systemPrompt,
         }),
       });
       const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "No se pudo completar el análisis.");
       const response = data.response || "Sin respuesta.";
-
-      // Extract coherence if mentioned
-      const omegaMatch = response.match(/Ω[:\s=]+([0-9.]+)/i) || response.match(/coherencia[:\s]+([0-9.]+)/i);
-      const newCoherence = omegaMatch
-        ? Math.min(1, parseFloat(omegaMatch[1]))
-        : Math.min(1, agent.coherence + 0.05 + Math.random() * 0.1);
+      const newCoherence = typeof data.omega === "number" ? data.omega : 0;
 
       updateAgent(agent.id, {
-        status: "done",
+        status: data.analysisStatus === "failed" ? "error" : "done",
         iterations: agent.iterations + 1,
         coherence: newCoherence,
+        xp: typeof data.xp === "number" ? data.xp : agent.xp,
         messages: [
           ...agent.messages,
           { role: "user", content: msg, ts: Date.now() },
@@ -340,7 +368,7 @@ function AgentCard({ agent, onRun, onRemove, onSendMsg }: {
           <div>
             <div className="font-mono text-[11px] font-bold uppercase tracking-wider" style={{ color: role.color }}>{role.name}</div>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-[9px] font-mono text-[#333]">iter:{iterations}</span>
+              <span className="text-[9px] font-mono text-[#333]">iter:{iterations} · XP:{agent.xp}</span>
               <CoherenceBar value={coherence} />
               <span className="text-[9px] font-mono" style={{ color: coherence > 0.7 ? "#00ffff" : "#444" }}>Ω{coherence.toFixed(2)}</span>
             </div>

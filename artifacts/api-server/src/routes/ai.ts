@@ -1,10 +1,30 @@
 import { Router } from "express";
-import { db, conversations, messages } from "@workspace/db";
+import { db, conversations, messages, agentsTable } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, sql } from "drizzle-orm";
 import { AiChatBody, AiExplainBody, AiImproveBody } from "@workspace/api-zod";
+import {
+  buildAgentSystemPrompt,
+  classifyAgentAnalysis,
+  hasAgentEvidence,
+  parseOmega,
+} from "./agent-evaluation";
 
 const router = Router();
+
+router.get("/agents", async (_req, res) => {
+  const records = await db
+    .select({
+      id: agentsTable.id,
+      name: agentsTable.name,
+      xp: agentsTable.xp,
+      failedAnalyses: agentsTable.failedAnalyses,
+      omega: agentsTable.lastOmega,
+      lastFailure: agentsTable.lastFailure,
+    })
+    .from(agentsTable);
+  res.json(records);
+});
 
 router.post("/ai/chat", async (req, res) => {
   const parsed = AiChatBody.safeParse(req.body);
@@ -13,14 +33,29 @@ router.post("/ai/chat", async (req, res) => {
     return;
   }
 
-  const { message, context, language } = parsed.data;
+  const { message, context, language, agentId, agentName, agentRolePrompt } =
+    parsed.data;
+  if (agentId && !/^[a-z0-9_-]{1,64}$/.test(agentId)) {
+    res.status(400).json({ error: "Identificador de agente inválido." });
+    return;
+  }
 
   const [conv] = await db
     .insert(conversations)
     .values({ title: message.slice(0, 60) })
     .returning();
 
-  const systemPrompt = `You are an elite AI coding assistant inside DevTerminal — a professional developer tool. You help with code, debugging, explanations, algorithms, security concepts, and any programming topic.
+  const systemPrompt = agentId
+    ? [
+        buildAgentSystemPrompt(agentRolePrompt, agentName),
+        language ? `Lenguaje analizado: ${language}.` : "",
+        context
+          ? `Código o métricas verificables para el análisis:\n\`\`\`\n${context}\n\`\`\``
+          : "No se proporcionó código ni métricas verificables.",
+      ]
+        .filter(Boolean)
+        .join("\n\n")
+    : `You are an elite AI coding assistant inside DevTerminal — a professional developer tool. You help with code, debugging, explanations, algorithms, security concepts, and any programming topic.
 ${language ? `Current language context: ${language}.` : ""}
 ${context ? `Code context:\n\`\`\`\n${context}\n\`\`\`` : ""}
 Be direct, concise, and technically precise. Format code blocks with language tags. Think like a senior engineer.`;
@@ -53,7 +88,59 @@ Be direct, concise, and technically precise. Format code blocks with language ta
     content: aiResponse,
   });
 
-  res.json({ response: aiResponse, conversationId: conv.id });
+  if (!agentId) {
+    res.json({ response: aiResponse, conversationId: conv.id });
+    return;
+  }
+
+  const parsedOmega = parseOmega(aiResponse);
+  const hasEvidence = hasAgentEvidence(context);
+  const omega = hasEvidence ? parsedOmega : Math.min(parsedOmega ?? 0, 0.49);
+  const analysisStatus = classifyAgentAnalysis(omega, hasEvidence);
+  const failureReason =
+    analysisStatus === "failed"
+      ? !hasEvidence
+        ? "No se proporcionó código ni métricas verificables."
+        : parsedOmega === null
+          ? "El agente no devolvió un índice Ω válido."
+          : `Índice Ω bajo (${parsedOmega.toFixed(2)}).`
+      : null;
+  const [agent] = await db
+    .insert(agentsTable)
+    .values({
+      id: agentId,
+      name: agentName || agentId,
+      xp: analysisStatus === "rewarded" ? 1 : 0,
+      failedAnalyses: analysisStatus === "failed" ? 1 : 0,
+      lastOmega: omega,
+      lastFailure: failureReason,
+    })
+    .onConflictDoUpdate({
+      target: agentsTable.id,
+      set: {
+        name: agentName || agentId,
+        xp:
+          analysisStatus === "rewarded"
+            ? sql`${agentsTable.xp} + 1`
+            : sql`${agentsTable.xp}`,
+        failedAnalyses:
+          analysisStatus === "failed"
+            ? sql`${agentsTable.failedAnalyses} + 1`
+            : sql`${agentsTable.failedAnalyses}`,
+        lastOmega: omega,
+        lastFailure: failureReason,
+        updatedAt: new Date(),
+      },
+    })
+    .returning({ xp: agentsTable.xp });
+
+  res.json({
+    response: aiResponse,
+    conversationId: conv.id,
+    omega,
+    xp: agent?.xp ?? 0,
+    analysisStatus,
+  });
 });
 
 router.post("/ai/explain", async (req, res) => {
