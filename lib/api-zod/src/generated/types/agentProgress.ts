@@ -5,12 +5,14 @@
  * DevTerminal API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AgentProgressStatus } from "./agentProgressStatus";
 
 export interface AgentProgress {
   id: string;
   name: string;
   xp: number;
   failedAnalyses: number;
+  status: AgentProgressStatus;
   omega?: number | null;
   lastFailure?: string | null;
 }

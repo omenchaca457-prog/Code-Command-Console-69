@@ -584,9 +584,32 @@ components:
         analysisStatus:
           type: string
           enum: [rewarded, review, failed]
+        status:
+          type: string
+          enum: [active, completed, failed]
+        agentMetrics:
+          $ref: "#/components/schemas/AgentPayloadMetrics"
       required:
         - response
         - conversationId
+
+    AgentPayloadMetrics:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active]
+        language:
+          type: string
+        code_chars:
+          type: integer
+        code_lines:
+          type: integer
+        non_empty_lines:
+          type: integer
+        evidence_available:
+          type: boolean
+      required: [status, language, code_chars, code_lines, non_empty_lines, evidence_available]
 
     AgentProgress:
       type: object
@@ -599,13 +622,16 @@ components:
           type: integer
         failedAnalyses:
           type: integer
+        status:
+          type: string
+          enum: [idle, active, completed, failed]
         omega:
           type: number
           nullable: true
         lastFailure:
           type: string
           nullable: true
-      required: [id, name, xp, failedAnalyses]
+      required: [id, name, xp, failedAnalyses, status]
 
     DeepSeekChatInput:
       type: object

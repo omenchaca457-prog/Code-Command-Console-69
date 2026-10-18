@@ -143,19 +143,57 @@ export const AiChatResponseAnalysisStatus = {
   failed: "failed",
 } as const;
 
+export type AiChatResponseStatus =
+  (typeof AiChatResponseStatus)[keyof typeof AiChatResponseStatus];
+
+export const AiChatResponseStatus = {
+  active: "active",
+  completed: "completed",
+  failed: "failed",
+} as const;
+
+export type AgentPayloadMetricsStatus =
+  (typeof AgentPayloadMetricsStatus)[keyof typeof AgentPayloadMetricsStatus];
+
+export const AgentPayloadMetricsStatus = {
+  active: "active",
+} as const;
+
+export interface AgentPayloadMetrics {
+  status: AgentPayloadMetricsStatus;
+  language: string;
+  code_chars: number;
+  code_lines: number;
+  non_empty_lines: number;
+  evidence_available: boolean;
+}
+
 export interface AiChatResponse {
   response: string;
   conversationId: number;
   omega?: number | null;
   xp?: number;
   analysisStatus?: AiChatResponseAnalysisStatus;
+  status?: AiChatResponseStatus;
+  agentMetrics?: AgentPayloadMetrics;
 }
+
+export type AgentProgressStatus =
+  (typeof AgentProgressStatus)[keyof typeof AgentProgressStatus];
+
+export const AgentProgressStatus = {
+  idle: "idle",
+  active: "active",
+  completed: "completed",
+  failed: "failed",
+} as const;
 
 export interface AgentProgress {
   id: string;
   name: string;
   xp: number;
   failedAnalyses: number;
+  status: AgentProgressStatus;
   omega?: number | null;
   lastFailure?: string | null;
 }

@@ -5,8 +5,10 @@ import { eq, asc } from "drizzle-orm";
 import { AiChatBody, AiExplainBody, AiImproveBody } from "@workspace/api-zod";
 import { persistAgentResponse } from "./agent-message-persistence";
 import {
+  buildAgentEvidenceMetrics,
   buildAgentSystemPrompt,
   classifyAgentAnalysis,
+  citesSourceEvidence,
   hasAgentEvidence,
   parseOmega,
 } from "./agent-evaluation";
@@ -16,7 +18,11 @@ const router = Router();
 function evaluateAgentResponse(aiResponse: string, context: string | null | undefined) {
   const parsedOmega = parseOmega(aiResponse);
   const hasEvidence = hasAgentEvidence(context);
-  const omega = hasEvidence ? parsedOmega : Math.min(parsedOmega ?? 0, 0.49);
+  const citedSource = citesSourceEvidence(aiResponse, context);
+  const claimedOmega = parsedOmega ?? 0.49;
+  const omega = !hasEvidence
+    ? 0.05
+    : Math.max(0.01, citedSource ? claimedOmega : Math.min(claimedOmega, 0.85));
   const analysisStatus = classifyAgentAnalysis(omega, hasEvidence);
   const failureReason =
     analysisStatus === "failed"
@@ -24,6 +30,8 @@ function evaluateAgentResponse(aiResponse: string, context: string | null | unde
         ? "No se proporcionó código ni métricas verificables."
         : parsedOmega === null
           ? "El agente no devolvió un índice Ω válido."
+          : !citedSource
+            ? "El agente no citó una línea verificable del código proporcionado."
           : `Índice Ω bajo (${parsedOmega.toFixed(2)}).`
       : null;
 
@@ -38,6 +46,7 @@ router.get("/agents", async (_req, res) => {
       xp: agentsTable.xp,
       failedAnalyses: agentsTable.failedAnalyses,
       omega: agentsTable.lastOmega,
+      status: agentsTable.status,
       lastFailure: agentsTable.lastFailure,
     })
     .from(agentsTable);
@@ -99,6 +108,23 @@ router.post("/ai/chat", async (req, res) => {
     }
   }
 
+  const agentMetrics = agentId
+    ? buildAgentEvidenceMetrics(context, language)
+    : null;
+  if (agentId) {
+    await db
+      .insert(agentsTable)
+      .values({
+        id: agentId,
+        name: agentName || agentId,
+        status: "active",
+      })
+      .onConflictDoUpdate({
+        target: agentsTable.id,
+        set: { name: agentName || agentId, status: "active", updatedAt: new Date() },
+      });
+  }
+
   const [conv] = await db
     .insert(conversations)
     .values({ title: message.slice(0, 60) })
@@ -108,6 +134,7 @@ router.post("/ai/chat", async (req, res) => {
     ? [
         buildAgentSystemPrompt(agentRolePrompt, agentName),
         language ? `Lenguaje analizado: ${language}.` : "",
+        `Payload obligatorio del nodo: ${JSON.stringify(agentMetrics)}. Estas métricas fueron calculadas por el servidor; no las alteres.`,
         context
           ? `Código o métricas verificables para el análisis:\n\`\`\`\n${context}\n\`\`\``
           : "No se proporcionó código ni métricas verificables.",
@@ -130,14 +157,27 @@ Be direct, concise, and technically precise. Format code blocks with language ta
     .where(eq(messages.conversationId, conv.id))
     .orderBy(asc(messages.id));
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-5.4",
-    max_completion_tokens: 8192,
-    messages: history.map((m) => ({
-      role: m.role as "system" | "user" | "assistant",
-      content: m.content,
-    })),
-  });
+  let completion: Awaited<ReturnType<typeof openai.chat.completions.create>>;
+  try {
+    completion = await openai.chat.completions.create({
+      model: "gpt-5.4",
+      max_completion_tokens: 8192,
+      messages: history.map((m) => ({
+        role: m.role as "system" | "user" | "assistant",
+        content: m.content,
+      })),
+    });
+  } catch (error) {
+    if (agentId) {
+      await db.update(agentsTable).set({
+        status: "failed",
+        lastFailure: "El proveedor de IA no completó el análisis.",
+        lastOmega: 0.05,
+        updatedAt: new Date(),
+      }).where(eq(agentsTable.id, agentId));
+    }
+    throw error;
+  }
 
   const aiResponse = completion.choices[0]?.message?.content ?? "";
 
@@ -175,6 +215,8 @@ Be direct, concise, and technically precise. Format code blocks with language ta
     omega: finalAnalysis.omega,
     xp: saved.xp,
     analysisStatus: finalAnalysis.analysisStatus,
+    status: finalAnalysis.analysisStatus === "failed" ? "failed" : "completed",
+    agentMetrics,
   });
 });
 

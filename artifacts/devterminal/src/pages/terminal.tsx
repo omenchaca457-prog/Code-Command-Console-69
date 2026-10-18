@@ -61,7 +61,7 @@ export default function TerminalPage() {
   const searchRef = useRef<SearchAddon | null>(null);
   const deepSeekAbortRef = useRef<AbortController | null>(null);
   const { currentCode, currentLanguage } = useAppContext();
-  const { recordEvent } = useNeuralContext();
+  const { recordEvent, events } = useNeuralContext();
   const recordEventRef = useRef(recordEvent);
   const shellCommandBufferRef = useRef("");
   const [status, setStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
@@ -297,6 +297,8 @@ export default function TerminalPage() {
     }
 
     const controller = new AbortController();
+    let assistantResponse = "";
+    let userMessageSaved = false;
     recordEvent({
       origin: "terminal",
       eventType: "ai_query",
@@ -308,10 +310,24 @@ export default function TerminalPage() {
 
     try {
       await persistTerminalMessage("user", prompt);
+      userMessageSaved = true;
       const context = [
-        `Lenguaje del editor: ${currentLanguage}`,
-        "Código abierto del editor:",
-        currentCode.slice(0, 28_000),
+        JSON.stringify({
+          page: "terminal",
+          editor: {
+            language: currentLanguage,
+            status: currentCode.trim() ? "loaded" : "empty",
+            codeCharacters: currentCode.length,
+            code: currentCode.slice(0, 20_000),
+          },
+          recentRunnerAndAgentActivity: events
+            .filter((item) => item.origin === "runner" || item.origin === "agents")
+            .slice(0, 8)
+            .map(({ origin, eventType, content, createdAt }) => ({ origin, eventType, content, createdAt })),
+          serverAndWebviewLogs: "Consulta get_runtime_diagnostics para logs recientes.",
+          library: "Consulta get_library_snapshot para snippets guardados.",
+          integrations: "Consulta get_integrations_status; nunca envíes valores secretos.",
+        }),
       ].join("\n");
       const response = await fetch("/api/deepseek/chat", {
         method: "POST",
@@ -329,7 +345,6 @@ export default function TerminalPage() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      let assistantResponse = "";
 
       const processFrame = async (frame: string) => {
         const data = frame
@@ -373,6 +388,10 @@ export default function TerminalPage() {
       } else {
         const message = error instanceof Error ? error.message : "Error de conexión.";
         writeSafeText(term, `\n[Error] ${message}\n`);
+      }
+      if (userMessageSaved && assistantResponse.trim()) {
+        const partial = `${assistantResponse}\n\n[RESPUESTA PARCIAL: flujo interrumpido]`;
+        void persistTerminalMessage("assistant", partial).catch(() => undefined);
       }
     } finally {
       if (deepSeekAbortRef.current === controller) {

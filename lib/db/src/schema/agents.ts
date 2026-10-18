@@ -13,6 +13,7 @@ export const agentsTable = pgTable("agents", {
   failedAnalyses: integer("failed_analyses").notNull().default(0),
   lastOmega: doublePrecision("last_omega"),
   lastFailure: text("last_failure"),
+  status: text("status").notNull().default("idle"),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

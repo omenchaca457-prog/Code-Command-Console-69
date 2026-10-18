@@ -7,6 +7,7 @@ import autorunRouter from "./autorun";
 import deepseekRouter from "./deepseek";
 import neuralEventsRouter from "./neural-events";
 import messagesRouter from "./messages";
+import diagnosticsRouter from "./diagnostics";
 
 const router: IRouter = Router();
 
@@ -17,6 +18,7 @@ router.use(aiRouter);
 router.use(deepseekRouter);
 router.use(neuralEventsRouter);
 router.use(messagesRouter);
+router.use(diagnosticsRouter);
 router.use(autorunRouter);
 
 export default router;

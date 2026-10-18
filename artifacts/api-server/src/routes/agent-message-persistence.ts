@@ -61,6 +61,7 @@ export async function persistAgentResponse(
         failedAnalyses: input.analysisStatus === "failed" ? 1 : 0,
         lastOmega: input.omega,
         lastFailure: input.failureReason,
+        status: input.analysisStatus === "failed" ? "failed" : "completed",
       })
       .onConflictDoUpdate({
         target: agentsTable.id,
@@ -76,6 +77,7 @@ export async function persistAgentResponse(
               : sql`${agentsTable.failedAnalyses}`,
           lastOmega: input.omega,
           lastFailure: input.failureReason,
+          status: input.analysisStatus === "failed" ? "failed" : "completed",
           updatedAt: new Date(),
         },
       })

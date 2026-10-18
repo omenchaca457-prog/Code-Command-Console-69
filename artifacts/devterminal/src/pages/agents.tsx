@@ -79,7 +79,7 @@ type Agent = {
   role: AgentRole;
   status: "idle" | "thinking" | "done" | "error";
   messages: AgentMessage[];
-  coherence: number;
+  coherence: number | null;
   xp: number;
   iterations: number;
 };
@@ -91,7 +91,7 @@ function makeAgent(role: AgentRole): Agent {
     role,
     status: "idle",
     messages: [],
-    coherence: 0,
+    coherence: null,
     xp: 0,
     iterations: 0,
   };
@@ -129,7 +129,7 @@ export default function Agents() {
           current.map(agent => {
             const record = byId.get(agent.role.id);
             return record
-              ? { ...agent, xp: record.xp, coherence: record.omega ?? 0 }
+              ? { ...agent, xp: record.xp, coherence: record.omega }
               : agent;
           }),
         );
@@ -142,7 +142,8 @@ export default function Agents() {
     return () => controller.abort();
   }, [toast]);
 
-  const totalCoherence = agents.reduce((s, a) => s + a.coherence, 0) / Math.max(1, agents.length);
+  const knownCoherence = agents.filter(agent => agent.coherence !== null);
+  const totalCoherence = knownCoherence.reduce((s, a) => s + (a.coherence ?? 0), 0) / Math.max(1, knownCoherence.length);
 
   const updateAgent = useCallback((id: string, patch: Partial<Agent>) => {
     setAgents(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a));
@@ -166,7 +167,7 @@ export default function Agents() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: msg,
-          context: code.slice(0, 1000),
+          context: code.slice(0, 20000),
           language: currentLanguage,
           agentId: agent.role.id,
           agentName: agent.role.name,
@@ -177,11 +178,11 @@ export default function Agents() {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || "No se pudo completar el análisis.");
       const response = data.response || "Sin respuesta.";
-      const newCoherence = typeof data.omega === "number" ? data.omega : 0;
+      const newCoherence = typeof data.omega === "number" ? data.omega : null;
       recordEvent({
         origin: "agents",
         eventType: data.analysisStatus === "failed" ? "agent_failed" : "agent_complete",
-        content: `agent=${agent.role.name}; omega=${newCoherence.toFixed(2)}`,
+        content: `agent=${agent.role.name}; omega=${newCoherence?.toFixed(2) ?? "n/d"}`,
       });
 
       updateAgent(agent.id, {
@@ -407,8 +408,10 @@ function AgentCard({ agent, onRun, onRemove, onSendMsg }: {
             <div className="font-mono text-[11px] font-bold uppercase tracking-wider" style={{ color: role.color }}>{role.name}</div>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-[9px] font-mono text-[#333]">iter:{iterations} · XP:{agent.xp}</span>
-              <CoherenceBar value={coherence} />
-              <span className="text-[9px] font-mono" style={{ color: coherence > 0.7 ? "#00ffff" : "#444" }}>Ω{coherence.toFixed(2)}</span>
+              <CoherenceBar value={coherence ?? 0} />
+              <span className="text-[9px] font-mono" style={{ color: coherence !== null && coherence > 0.7 ? "#00ffff" : "#444" }}>
+                {coherence === null ? "Ω N/D" : `Ω${coherence.toFixed(2)}`}
+              </span>
             </div>
           </div>
         </div>

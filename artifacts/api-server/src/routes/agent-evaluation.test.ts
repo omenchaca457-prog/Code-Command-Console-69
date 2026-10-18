@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   AGENT_SWARM_SYSTEM_PROMPT,
+  buildAgentEvidenceMetrics,
   buildAgentSystemPrompt,
   classifyAgentAnalysis,
+  citesSourceEvidence,
   hasAgentEvidence,
   parseOmega,
 } from "./agent-evaluation.ts";
@@ -13,7 +15,23 @@ describe("agent swarm evaluation", () => {
     const prompt = buildAgentSystemPrompt("Audita seguridad.", "Security");
     assert.ok(prompt.startsWith(AGENT_SWARM_SYSTEM_PROMPT));
     assert.match(prompt, /Agente: Security/);
+    assert.match(prompt, /Estado obligatorio del nodo: active/);
     assert.match(prompt, /Audita seguridad/);
+  });
+
+  it("builds active metrics from source and verifies exact citations", () => {
+    const code = "export function calculateTotal(items) {\n  return items.length;\n}";
+    assert.deepEqual(buildAgentEvidenceMetrics(code, "typescript"), {
+      status: "active",
+      language: "typescript",
+      code_chars: code.length,
+      code_lines: 3,
+      non_empty_lines: 3,
+      evidence_available: true,
+    });
+    assert.equal(citesSourceEvidence("Hallazgo: return items.length;", code), true);
+    assert.equal(citesSourceEvidence("Sugerencia genérica", code), false);
+    assert.equal(buildAgentEvidenceMetrics(undefined, undefined).status, "active");
   });
 
   it("parses only explicit Ω values in range", () => {

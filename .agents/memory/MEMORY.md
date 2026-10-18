@@ -1,1 +1,2 @@
 - [Node test database imports](node-test-db-imports.md) — Node's ESM test runner cannot directly resolve the database package's TypeScript barrel imports.
+- [Agent Ω data quality](agent-omega-quality.md) — Missing evidence is unknown (NULL/N/D), not a measured zero; preserve failure counts without inventing metrics.

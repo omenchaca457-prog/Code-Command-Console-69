@@ -11,7 +11,7 @@ export function buildAgentSystemPrompt(
     AGENT_SWARM_SYSTEM_PROMPT,
     agentName ? `Agente: ${agentName}.` : "",
     rolePrompt ?? "",
-    "Evalúa la coherencia con evidencia verificable y termina la respuesta con una línea exacta `Ω: 0.00` (valor entre 0 y 1).",
+    "Estado obligatorio del nodo: active. Devuelve un bloque [PAYLOAD] con language, code_chars, code_lines y evidence_available; cita al menos una línea literal del código en [EVIDENCIA]. No inventes métricas. Termina con una línea exacta `Ω: 0.00` (valor entre 0 y 1).",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -41,4 +41,30 @@ export function hasAgentEvidence(context: string | null | undefined): boolean {
     !/^console\.log\(["']hello, devterminal!["']\);?$/i.test(normalized) &&
     !/^(n\/a|none|ninguno|sin (código|codigo|datos|métricas|metricas))$/i.test(normalized)
   );
+}
+
+export function buildAgentEvidenceMetrics(
+  context: string | null | undefined,
+  language: string | null | undefined,
+) {
+  const source = context ?? "";
+  return {
+    status: "active" as const,
+    language: language || "no especificado",
+    code_chars: source.length,
+    code_lines: source ? source.split(/\r?\n/).length : 0,
+    non_empty_lines: source.split(/\r?\n/).filter((line) => line.trim()).length,
+    evidence_available: hasAgentEvidence(source),
+  };
+}
+
+export function citesSourceEvidence(
+  response: string,
+  context: string | null | undefined,
+): boolean {
+  const sourceLines = (context ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 16);
+  return sourceLines.some((line) => response.includes(line));
 }

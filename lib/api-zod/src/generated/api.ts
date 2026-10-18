@@ -138,6 +138,17 @@ export const AiChatResponse = zod.object({
   omega: zod.number().nullish(),
   xp: zod.number().optional(),
   analysisStatus: zod.enum(["rewarded", "review", "failed"]).optional(),
+  status: zod.enum(["active", "completed", "failed"]).optional(),
+  agentMetrics: zod
+    .object({
+      status: zod.enum(["active"]),
+      language: zod.string(),
+      code_chars: zod.number(),
+      code_lines: zod.number(),
+      non_empty_lines: zod.number(),
+      evidence_available: zod.boolean(),
+    })
+    .optional(),
 });
 
 /**
@@ -148,6 +159,7 @@ export const GetAgentsResponseItem = zod.object({
   name: zod.string(),
   xp: zod.number(),
   failedAnalyses: zod.number(),
+  status: zod.enum(["idle", "active", "completed", "failed"]),
   omega: zod.number().nullish(),
   lastFailure: zod.string().nullish(),
 });

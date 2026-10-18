@@ -85,6 +85,26 @@ function App() {
     document.documentElement.classList.add("dark");
   }, []);
 
+  useEffect(() => {
+    const report = (message: string) => {
+      void fetch("/api/diagnostics/webview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: message.slice(0, 500) }),
+        keepalive: true,
+      }).catch(() => undefined);
+    };
+    const onError = (event: ErrorEvent) => report(`window.error: ${event.message}`);
+    const onRejection = (event: PromiseRejectionEvent) =>
+      report(`unhandledrejection: ${String(event.reason).slice(0, 400)}`);
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>

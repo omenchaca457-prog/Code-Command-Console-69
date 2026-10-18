@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { useAiChat, useAiExplain, useAiImprove } from "@workspace/api-client-react";
+import { useAiExplain, useAiImprove } from "@workspace/api-client-react";
 import { useAppContext } from "@/lib/app-context";
+import { useNeuralContext } from "@/lib/neural-context";
 import { Button } from "@/components/ui/button";
 import { Send, Code, Wrench, Bug, Copy, Eye } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -14,39 +15,102 @@ type Message = {
 
 export default function AI() {
   const { currentCode, currentLanguage } = useAppContext();
+  const { events, recordEvent } = useNeuralContext();
   const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", content: "SYSTEM ONLINE. I am your DevTerminal neural interface. Feed me code — I will analyze, optimize, or debug it. Ask me anything." }
+    { role: "assistant", content: "[STATUS] Núcleo SQ-AI listo. Contexto del editor y diagnósticos del sistema disponibles.\n[DATA] Ω pendiente de evidencia. ECR-Code: 410542503.\n[READY] Formula una consulta técnica, Arquitecto." }
   ]);
   const [input, setInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  const chatMutation = useAiChat();
   const explainMutation = useAiExplain();
   const improveMutation = useAiImprove();
 
-  const isThinking = chatMutation.isPending || explainMutation.isPending || improveMutation.isPending;
+  const [isDeepseekThinking, setIsDeepseekThinking] = useState(false);
+  const isThinking = isDeepseekThinking || explainMutation.isPending || improveMutation.isPending;
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking]);
 
-  const handleSend = () => {
-    if (!input.trim()) return;
-    const userMsg = input;
-    setMessages(prev => [...prev, { role: "user", content: userMsg }]);
+  const handleSend = async () => {
+    if (!input.trim() || isDeepseekThinking) return;
+    const userMsg = input.trim();
+    setMessages(prev => [...prev, { role: "user", content: userMsg }, { role: "assistant", content: "" }]);
     setInput("");
-    chatMutation.mutate({
-      data: { message: userMsg, context: currentCode, language: currentLanguage }
-    }, {
-      onSuccess: (res) => setMessages(prev => [...prev, {
-        role: "assistant",
-        content: typeof res.response === "string" && res.response.trim()
-          ? res.response
-          : "The AI returned no response."
-      }]),
-      onError: () => toast({ title: "CONNECTION FAILED", description: "Neural link disrupted.", variant: "destructive" })
-    });
+    setIsDeepseekThinking(true);
+    recordEvent({ origin: "terminal", eventType: "ai_query", content: "Consulta enviada desde la interfaz SQ-AI" });
+    try {
+      const context = JSON.stringify({
+        page: "ai",
+        editor: {
+          language: currentLanguage,
+          status: currentCode.trim() ? "loaded" : "empty",
+          codeCharacters: currentCode.length,
+          code: currentCode.slice(0, 20_000),
+        },
+        recentRunnerAndAgentActivity: events
+          .filter(item => item.origin === "runner" || item.origin === "agents")
+          .slice(0, 8)
+          .map(({ origin, eventType, content, createdAt }) => ({ origin, eventType, content, createdAt })),
+        library: "Consulta get_library_snapshot.",
+        serverAndWebviewLogs: "Consulta get_runtime_diagnostics.",
+        integrations: "Consulta get_integrations_status sin solicitar credenciales.",
+      });
+      const response = await fetch("/api/deepseek/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: userMsg, context }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error || `Error del servidor (${response.status}).`);
+      }
+      if (!response.body) throw new Error("El servidor no devolvió un flujo SSE.");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const append = (text: string) => setMessages(previous => {
+        const next = [...previous];
+        const last = next.at(-1);
+        if (last?.role === "assistant") next[next.length - 1] = { ...last, content: last.content + text };
+        return next;
+      });
+      const consume = (frame: string) => {
+        const data = frame.split(/\r?\n/).filter(line => line.startsWith("data:"))
+          .map(line => line.slice(5).trimStart()).join("\n");
+        if (!data || data === "[DONE]") return;
+        const payload = JSON.parse(data) as { delta?: string; error?: string };
+        if (payload.error) throw new Error(payload.error);
+        if (payload.delta) append(payload.delta);
+      };
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split(/\r?\n\r?\n/);
+        buffer = frames.pop() ?? "";
+        for (const frame of frames) consume(frame);
+      }
+      buffer += decoder.decode();
+      if (buffer.trim()) consume(buffer);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error de conexión.";
+      setMessages(previous => {
+        const next = [...previous];
+        const last = next.at(-1);
+        if (last?.role === "assistant") {
+          next[next.length - 1] = {
+            ...last,
+            content: last.content ? `${last.content}\n[ALERT] ${message}` : `[ALERT] ${message}`,
+          };
+        }
+        return next;
+      });
+      toast({ title: "FALLO DE ENLACE SQ-AI", description: message, variant: "destructive" });
+    } finally {
+      setIsDeepseekThinking(false);
+    }
   };
 
   const handleExplain = () => {

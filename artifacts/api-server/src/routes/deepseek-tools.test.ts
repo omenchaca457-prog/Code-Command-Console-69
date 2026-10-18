@@ -63,4 +63,19 @@ describe("DeepSeek tool permissions", () => {
     );
   });
 
+  it("only accepts fixed, read-only diagnostic commands", () => {
+    assert.deepEqual(
+      validateDeepseekToolArguments("run_safe_command", { command: "git_status" }),
+      { command: "git_status" },
+    );
+    assert.throws(
+      () => validateDeepseekToolArguments("run_safe_command", { command: "bash -c rm" }),
+      /lista segura/,
+    );
+    assert.deepEqual(
+      validateDeepseekToolArguments("get_runtime_diagnostics", {}),
+      {},
+    );
+  });
+
 });

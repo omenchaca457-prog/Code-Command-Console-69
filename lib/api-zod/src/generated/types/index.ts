@@ -6,10 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./agentPayloadMetrics";
+export * from "./agentPayloadMetricsStatus";
 export * from "./agentProgress";
+export * from "./agentProgressStatus";
 export * from "./aiChatRequest";
 export * from "./aiChatResponse";
 export * from "./aiChatResponseAnalysisStatus";
+export * from "./aiChatResponseStatus";
 export * from "./aiCodeResponse";
 export * from "./aiExplainRequest";
 export * from "./aiImproveRequest";

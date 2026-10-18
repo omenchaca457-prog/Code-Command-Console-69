@@ -3,6 +3,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { recordServerRequest } from "./lib/runtime-diagnostics";
 
 const app: Express = express();
 
@@ -25,6 +26,13 @@ app.use(
     },
   }),
 );
+app.use((req, res, next) => {
+  const started = Date.now();
+  res.once("finish", () => {
+    recordServerRequest(req.method, req.path, res.statusCode, Date.now() - started);
+  });
+  next();
+});
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

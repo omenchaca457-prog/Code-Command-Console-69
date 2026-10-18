@@ -5,7 +5,9 @@
  * DevTerminal API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AgentPayloadMetrics } from "./agentPayloadMetrics";
 import type { AiChatResponseAnalysisStatus } from "./aiChatResponseAnalysisStatus";
+import type { AiChatResponseStatus } from "./aiChatResponseStatus";
 
 export interface AiChatResponse {
   response: string;
@@ -13,4 +15,6 @@ export interface AiChatResponse {
   omega?: number | null;
   xp?: number;
   analysisStatus?: AiChatResponseAnalysisStatus;
+  status?: AiChatResponseStatus;
+  agentMetrics?: AgentPayloadMetrics;
 }

@@ -58,6 +58,56 @@ const DEEPSEEK_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "get_runtime_diagnostics",
+      description: "Lee un resumen limitado de logs recientes del servidor y errores capturados del Webview.",
+      parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_workspace_snapshot",
+      description: "Lee estado de PostgreSQL, XP/Ω/estado del enjambre, cantidad de snippets y métricas del proceso; nunca devuelve valores de secretos.",
+      parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_library_snapshot",
+      description: "Lista los últimos snippets guardados en Library.",
+      parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_integrations_status",
+      description: "Informa si la aplicación puede consultar el estado de integraciones; nunca revela credenciales.",
+      parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "run_safe_command",
+      description: "Ejecuta únicamente un comando de diagnóstico de solo lectura incluido en la lista segura.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            enum: ["git_status", "git_log", "node_version", "pnpm_version", "working_directory", "project_files"],
+          },
+        },
+        required: ["command"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 const handleDeepseekChat = async (
@@ -115,8 +165,24 @@ const handleDeepseekChat = async (
       baseURL: "https://api.deepseek.com/v1",
     });
 
+    const [workspace, diagnostics, library, integrations, neural] = await Promise.all([
+      executeDeepseekTool("get_workspace_snapshot", "{}"),
+      executeDeepseekTool("get_runtime_diagnostics", "{}"),
+      executeDeepseekTool("get_library_snapshot", "{}"),
+      executeDeepseekTool("get_integrations_status", "{}"),
+      executeDeepseekTool("get_neural_activity", "{}"),
+    ]);
+    const systemContext = [
+      context ?? "",
+      "[ESTADO REAL DEL SISTEMA]",
+      `workspace/database/process: ${workspace.slice(0, 8000)}`,
+      `server/webview logs: ${diagnostics.slice(-6000)}`,
+      `library: ${library.slice(0, 6000)}`,
+      `integration status: ${integrations.slice(0, 1500)}`,
+      `neural activity: ${neural.slice(0, 5000)}`,
+    ].join("\n\n");
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
-      buildDeepseekMessages(prompt, context, dbContext);
+      buildDeepseekMessages(prompt, systemContext, dbContext);
     let toolCallsExecuted = 0;
     let completed = false;
 
