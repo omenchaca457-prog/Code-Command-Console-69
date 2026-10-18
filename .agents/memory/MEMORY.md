@@ -1,2 +1,3 @@
 - [Node ESM workspace imports](node-test-db-imports.md) — Native Node tests need injectable adapters around workspace packages with extensionless TypeScript imports.
 - [Agent Ω data quality](agent-omega-quality.md) — Missing evidence is unknown (NULL/N/D), not a measured zero; preserve failure counts without inventing metrics.
+- [Neural SSE delivery](neural-sse-scaling.md) — Live fan-out is process-local; multi-instance API deployments need shared pub/sub in addition to database replay.

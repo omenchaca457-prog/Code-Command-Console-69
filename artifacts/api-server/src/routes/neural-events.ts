@@ -1,51 +1,64 @@
 import { Router } from "express";
-import { desc } from "drizzle-orm";
+import { asc, desc, gt } from "drizzle-orm";
 import { db, neuralEventsTable } from "@workspace/db";
 import { CreateNeuralEventBody } from "@workspace/api-zod";
-import { publishNeuralEvent, subscribeNeuralEvents } from "./neural-event-bus";
+import { publishNeuralEvent } from "./neural-event-bus";
+import { neuralEventHub } from "./neural-event-hub";
 
 const router = Router();
 
-router.get("/neural-events/stream", async (req, res) => {
+function parseEventId(value: string | undefined): number | null {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id >= 0 ? id : null;
+}
+
+router.get("/neural-events/stream", async (req, res): Promise<void> => {
+  const lastEventId = parseEventId(req.get("Last-Event-ID") ?? undefined);
+  const initialCursor = parseEventId(
+    typeof req.query.after === "string" ? req.query.after : undefined,
+  );
+  const afterId = lastEventId ?? initialCursor ?? 0;
+
   res.status(200);
-  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-  res.setHeader("Cache-Control", "no-cache, no-transform");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
-  res.flushHeaders();
-  res.write(": conexión establecida\n\n");
-
-  const unsubscribe = subscribeNeuralEvents((event) => {
-    if (!res.writableEnded) {
-      res.write(`event: neural-event\ndata: ${JSON.stringify(event)}\n\n`);
-    }
+  res.set({
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
   });
-  const heartbeat = setInterval(() => {
-    if (!res.writableEnded) res.write(": keep-alive\n\n");
-  }, 25_000);
-  const cleanup = () => {
-    clearInterval(heartbeat);
-    unsubscribe();
-  };
-  res.on("close", cleanup);
+  res.flushHeaders();
 
-  try {
-    const events = await db
+  const subscription = neuralEventHub.subscribe(
+    afterId,
+    async (cursor) => db
       .select()
       .from(neuralEventsTable)
-      .orderBy(desc(neuralEventsTable.createdAt))
-      .limit(50);
-    if (!res.writableEnded) {
-      res.write(`event: snapshot\ndata: ${JSON.stringify(events)}\n\n`);
-    }
+      .where(gt(neuralEventsTable.id, cursor))
+      .orderBy(asc(neuralEventsTable.id)),
+    (event) => {
+      if (res.destroyed || res.writableEnded) return;
+      res.write(`id: ${event.id}\ndata: ${JSON.stringify(event)}\n\n`);
+    },
+  );
+  const heartbeat = setInterval(() => {
+    if (!res.destroyed && !res.writableEnded) res.write(": keep-alive\n\n");
+  }, 25_000);
+
+  res.once("close", () => {
+    clearInterval(heartbeat);
+    subscription.unsubscribe();
+  });
+
+  try {
+    await subscription.ready;
   } catch (error) {
-    req.log.error({ err: error }, "No se pudo enviar la instantánea neuronal");
-    cleanup();
-    if (!res.writableEnded) res.end();
+    req.log.error({ err: error, afterId }, "No se pudo recuperar la actividad neuronal para SSE");
+    if (!res.destroyed && !res.writableEnded) res.end();
   }
 });
 
-router.get("/neural-events", async (_req, res) => {
+router.get("/neural-events", async (_req, res): Promise<void> => {
   const events = await db
     .select()
     .from(neuralEventsTable)
@@ -54,7 +67,7 @@ router.get("/neural-events", async (_req, res) => {
   res.json(events);
 });
 
-router.post("/neural-events", async (req, res) => {
+router.post("/neural-events", async (req, res): Promise<void> => {
   const parsed = CreateNeuralEventBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Evento neuronal inválido." });

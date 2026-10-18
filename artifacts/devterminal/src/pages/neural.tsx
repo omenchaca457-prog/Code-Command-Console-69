@@ -489,7 +489,7 @@ export default function Neural() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className={`inline-flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-widest ${
+          <span data-testid="status-neural-stream" className={`inline-flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-widest ${
             streamStatus === "connected" ? "text-[#22c55e]/70" : "text-[#f59e0b]/70"
           }`}>
             <span className={`h-1.5 w-1.5 rounded-full ${

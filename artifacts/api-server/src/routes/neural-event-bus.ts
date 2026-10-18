@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { neuralEventHub } from "./neural-event-hub.ts";
 
 export type StreamedNeuralEvent = {
   id: number;
@@ -12,6 +13,7 @@ const emitter = new EventEmitter();
 emitter.setMaxListeners(0);
 
 export function publishNeuralEvent(event: StreamedNeuralEvent) {
+  neuralEventHub.publish(event);
   emitter.emit("event", event);
 }
 

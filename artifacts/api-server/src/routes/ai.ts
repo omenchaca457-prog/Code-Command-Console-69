@@ -205,20 +205,18 @@ Be direct, concise, and technically precise. Format code blocks with language ta
         lastOmega: null,
         updatedAt: new Date(),
       }).where(eq(agentsTable.id, agentId));
-      const [event] = await db.insert(neuralEventsTable).values({
+      const [neuralEvent] = await db.insert(neuralEventsTable).values({
         origin: "agents",
         eventType: breaker.remainingMs > 0 ? "cortex_recovery" : "agent_failed",
         content: `agent=${agentId}; consecutive_failures=${breaker.consecutiveFailures}; ${failure}`,
       }).returning();
-      if (event) {
-        publishNeuralEvent({
-          id: event.id,
-          origin: "agents",
-          eventType: event.eventType,
-          content: event.content,
-          createdAt: event.createdAt.toISOString(),
-        });
-      }
+      publishNeuralEvent({
+        id: neuralEvent.id,
+        origin: "agents",
+        eventType: neuralEvent.eventType,
+        content: neuralEvent.content,
+        createdAt: neuralEvent.createdAt.toISOString(),
+      });
       res.status(controller?.signal.aborted ? 504 : 502).json({
         error: failure,
         status: breaker.remainingMs > 0 ? "standby" : "failed",
