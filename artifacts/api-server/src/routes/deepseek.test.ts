@@ -9,6 +9,9 @@ import {
   createDeepseekRouter,
   type DeepseekClient,
 } from "./deepseek";
+import type {
+  DeepseekRateLimitStore,
+} from "../lib/deepseek-rate-limit";
 
 type MockChunk = {
   choices: Array<{ delta?: { content?: string | null } }>;
@@ -65,10 +68,48 @@ async function post(
   });
 }
 
+function createMemoryRateLimitStore(): DeepseekRateLimitStore {
+  const requests = new Map<string, { count: number; resetAt: number }>();
+
+  return {
+    async consume({ clientIdentifier, currentTime, limit, windowMs }) {
+      let request = requests.get(clientIdentifier);
+      if (!request || request.resetAt <= currentTime) {
+        request = { count: 0, resetAt: currentTime + windowMs };
+        requests.set(clientIdentifier, request);
+      }
+
+      if (request.count >= limit) {
+        return {
+          count: request.count,
+          resetAt: request.resetAt,
+          allowed: false,
+        };
+      }
+
+      request.count += 1;
+      return {
+        count: request.count,
+        resetAt: request.resetAt,
+        allowed: true,
+      };
+    },
+  };
+}
+
+function createTestRouter(
+  options: Parameters<typeof createDeepseekRouter>[0] = {},
+) {
+  return createDeepseekRouter({
+    rateLimitStore: createMemoryRateLimitStore(),
+    ...options,
+  });
+}
+
 test("streams each provider delta as a separate SSE frame and ends with [DONE]", async (t) => {
   let capturedParams: unknown;
   let clientCreations = 0;
-  const router = createDeepseekRouter({
+  const router = createTestRouter({
     getApiKey: () => "simulated-test-key",
     createClient: (apiKey) => {
       assert.equal(apiKey, "simulated-test-key");
@@ -108,7 +149,7 @@ test("streams each provider delta as a separate SSE frame and ends with [DONE]",
 });
 
 test("ends a completed empty provider stream cleanly", async (t) => {
-  const router = createDeepseekRouter({
+  const router = createTestRouter({
     getApiKey: () => "simulated-test-key",
     createClient: () => mockClient(async () => chunks()),
   });
@@ -124,7 +165,7 @@ test("ends a completed empty provider stream cleanly", async (t) => {
 
 test("rejects invalid prompts before creating a provider client", async (t) => {
   let clientCreations = 0;
-  const router = createDeepseekRouter({
+  const router = createTestRouter({
     getApiKey: () => "simulated-test-key",
     createClient: () => {
       clientCreations += 1;
@@ -145,7 +186,7 @@ test("rejects invalid prompts before creating a provider client", async (t) => {
 test("limits requests per client and allows new requests after the window", async (t) => {
   let currentTime = 0;
   let providerCalls = 0;
-  const router = createDeepseekRouter({
+  const router = createTestRouter({
     getApiKey: () => "simulated-test-key",
     createClient: () =>
       mockClient(async () => {
@@ -208,11 +249,65 @@ test("limits requests per client and allows new requests after the window", asyn
   assert.equal(providerCalls, 4);
 });
 
+test("enforces the shared request limit across concurrent router instances", async (t) => {
+  let providerCalls = 0;
+  const sharedRateLimitStore = createMemoryRateLimitStore();
+  const createClient = () =>
+    mockClient(async () => {
+      providerCalls += 1;
+      return chunks("Listo");
+    });
+  const routerA = createTestRouter({
+    getApiKey: () => "simulated-test-key",
+    createClient,
+    rateLimitStore: sharedRateLimitStore,
+    now: () => 0,
+    getClientIdentifier: (req) =>
+      String(req.headers["x-test-client"] ?? "cliente-predeterminado"),
+  });
+  const routerB = createTestRouter({
+    getApiKey: () => "simulated-test-key",
+    createClient,
+    rateLimitStore: sharedRateLimitStore,
+    now: () => 0,
+    getClientIdentifier: (req) =>
+      String(req.headers["x-test-client"] ?? "cliente-predeterminado"),
+  });
+  const serverA = await startServer(routerA);
+  const serverB = await startServer(routerB);
+  t.after(async () => {
+    await Promise.all([serverA.close(), serverB.close()]);
+  });
+
+  const responses = await Promise.all(
+    Array.from({ length: 14 }, (_, index) =>
+      post(
+        index % 2 === 0 ? serverA.url : serverB.url,
+        { prompt: "Pregunta válida" },
+        { "x-test-client": "cliente-compartido" },
+      ),
+    ),
+  );
+  const accepted = responses.filter((response) => response.status === 200);
+  const limited = responses.filter((response) => response.status === 429);
+
+  assert.equal(accepted.length, 10);
+  assert.equal(limited.length, 4);
+  assert.equal(providerCalls, 10);
+  for (const response of limited) {
+    assert.equal(response.headers.get("retry-after"), "60");
+    assert.equal(response.headers.get("x-ratelimit-limit"), "10");
+    assert.equal(response.headers.get("x-ratelimit-remaining"), "0");
+    assert.equal(response.headers.get("x-ratelimit-reset"), "60");
+  }
+  await Promise.all(responses.map((response) => response.text()));
+});
+
 test("reports insufficient provider balance as an SSE error", async (t) => {
   const insufficientBalance = Object.assign(new Error("insufficient balance"), {
     status: 402,
   });
-  const router = createDeepseekRouter({
+  const router = createTestRouter({
     getApiKey: () => "simulated-test-key",
     createClient: () =>
       mockClient(async () => {
@@ -235,7 +330,7 @@ test("reports insufficient provider balance as an SSE error", async (t) => {
 
 test("preserves streamed deltas and emits an SSE error when the provider fails mid-stream", async (t) => {
   const providerFailure = new Error("provider connection dropped");
-  const router = createDeepseekRouter({
+  const router = createTestRouter({
     getApiKey: () => "simulated-test-key",
     createClient: () =>
       mockClient(async () =>
@@ -266,7 +361,7 @@ test("aborts the provider stream when the requesting client disconnects", async 
   const abortReceived = new Promise<void>((resolve) => {
     abortObserved = resolve;
   });
-  const router = createDeepseekRouter({
+  const router = createTestRouter({
     getApiKey: () => "simulated-test-key",
     createClient: () =>
       mockClient(async (_params, options) => {

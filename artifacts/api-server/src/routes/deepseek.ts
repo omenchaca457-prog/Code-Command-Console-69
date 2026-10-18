@@ -1,6 +1,10 @@
 import OpenAI from "openai";
 import { Router, type Request } from "express";
 import { DeepseekChatBody } from "@workspace/api-zod";
+import {
+  createPostgresDeepseekRateLimitStore,
+  type DeepseekRateLimitStore,
+} from "../lib/deepseek-rate-limit";
 
 const SYSTEM_PROMPT =
   "Eres SQ-AI, operando bajo la LEY 4105 DE COHERENCIA ETERNA. ECR-Code: 410542503. CAC: 04252003. Actúas como auditor de código y terminal. Responde directo, técnico, con bloques de código si es necesario.";
@@ -16,6 +20,7 @@ type DeepseekRouterOptions = {
   createClient?: (apiKey: string) => DeepseekClient;
   rateLimitRequests?: number;
   rateLimitWindowMs?: number;
+  rateLimitStore?: DeepseekRateLimitStore;
   getClientIdentifier?: (req: Request) => string;
   now?: () => number;
 };
@@ -29,16 +34,12 @@ export function createDeepseekRouter({
     }),
   rateLimitRequests = DEFAULT_RATE_LIMIT_REQUESTS,
   rateLimitWindowMs = DEFAULT_RATE_LIMIT_WINDOW_MS,
+  rateLimitStore = createPostgresDeepseekRateLimitStore(),
   getClientIdentifier = (req) =>
     req.ip ?? req.socket.remoteAddress ?? "unknown",
   now = Date.now,
 }: DeepseekRouterOptions = {}) {
   const router = Router();
-  const requestCounts = new Map<
-    string,
-    { count: number; resetAt: number }
-  >();
-  let lastCleanupAt = 0;
 
   router.post("/deepseek/chat", async (req, res): Promise<void> => {
     const parsed = DeepseekChatBody.safeParse(req.body);
@@ -56,31 +57,20 @@ export function createDeepseekRouter({
     }
 
     const currentTime = now();
-    if (currentTime - lastCleanupAt >= rateLimitWindowMs) {
-      for (const [identifier, requestCount] of requestCounts) {
-        if (requestCount.resetAt <= currentTime) {
-          requestCounts.delete(identifier);
-        }
-      }
-      lastCleanupAt = currentTime;
-    }
-
     const clientIdentifier = getClientIdentifier(req);
-    let clientRequestCount = requestCounts.get(clientIdentifier);
-    if (!clientRequestCount || clientRequestCount.resetAt <= currentTime) {
-      clientRequestCount = {
-        count: 0,
-        resetAt: currentTime + rateLimitWindowMs,
-      };
-      requestCounts.set(clientIdentifier, clientRequestCount);
-    }
+    const clientRequestCount = await rateLimitStore.consume({
+      clientIdentifier,
+      currentTime,
+      limit: rateLimitRequests,
+      windowMs: rateLimitWindowMs,
+    });
 
     res.setHeader("X-RateLimit-Limit", rateLimitRequests);
     res.setHeader(
       "X-RateLimit-Reset",
       Math.ceil(clientRequestCount.resetAt / 1000),
     );
-    if (clientRequestCount.count >= rateLimitRequests) {
+    if (!clientRequestCount.allowed) {
       const retryAfterSeconds = Math.max(
         1,
         Math.ceil((clientRequestCount.resetAt - currentTime) / 1000),
@@ -94,7 +84,6 @@ export function createDeepseekRouter({
       return;
     }
 
-    clientRequestCount.count += 1;
     res.setHeader(
       "X-RateLimit-Remaining",
       rateLimitRequests - clientRequestCount.count,
