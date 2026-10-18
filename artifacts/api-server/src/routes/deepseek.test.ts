@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildDeepseekMessages,
+  filterBadRequestHistory,
   formatMessageContext,
 } from "./deepseek-prompt.ts";
 
@@ -53,5 +54,28 @@ describe("buildDeepseekMessages", () => {
       context,
       "1. [2026-10-17T12:00:00.000Z] user: Auditoría\n2. [2026-10-16T09:30:00.000Z] assistant: Consulta SQL",
     );
+  });
+
+  it("filtra errores HTTP 400 del historial antes de formar el contexto", () => {
+    const history = filterBadRequestHistory([
+      {
+        role: "assistant",
+        content: "HTTP 400: Bad Request",
+        created_at: "2026-10-17T12:00:00.000Z",
+      },
+      {
+        role: "assistant",
+        content: "Error del servidor (400): Solicitud incorrecta",
+        created_at: "2026-10-17T12:00:01.000Z",
+      },
+      {
+        role: "user",
+        content: "Explícame el código 400 de una matriz.",
+        created_at: "2026-10-17T12:00:02.000Z",
+      },
+    ]);
+    assert.deepEqual(history.map((message) => message.content), [
+      "Explícame el código 400 de una matriz.",
+    ]);
   });
 });

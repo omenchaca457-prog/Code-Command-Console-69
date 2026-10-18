@@ -9,6 +9,15 @@ export type MessageContextRow = {
   created_at: Date | string;
 };
 
+const BAD_REQUEST_HISTORY_PATTERN =
+  /\bHTTP(?:\s+status)?\s*400\b|\b400\s+(?:Bad Request|Solicitud incorrecta)\b|\bError(?:\s+del servidor)?\s*\(?400\b/i;
+
+export function filterBadRequestHistory(
+  rows: MessageContextRow[],
+): MessageContextRow[] {
+  return rows.filter((row) => !BAD_REQUEST_HISTORY_PATTERN.test(row.content));
+}
+
 const SYSTEM_PROMPT =
   "Eres SQ-AI, operando bajo la LEY 4105 DE COHERENCIA ETERNA. ECR-Code: 410542503. CAC: 04252003. Actúas como auditor de código y terminal. Responde directo, técnico, con bloques de código si es necesario.";
 

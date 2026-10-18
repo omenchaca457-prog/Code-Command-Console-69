@@ -4,6 +4,7 @@ import { DeepseekChatBody } from "@workspace/api-zod";
 import { pool } from "@workspace/db";
 import {
   buildDeepseekMessages,
+  filterBadRequestHistory,
   formatMessageContext,
 } from "./deepseek-prompt";
 import { executeDeepseekTool } from "./deepseek-tools";
@@ -90,7 +91,7 @@ const handleDeepseekChat = async (
         WHERE conversation_id = (SELECT MAX(id) FROM conversations)
         ORDER BY id ASC LIMIT 40;
       `);
-      dbContext = formatMessageContext(rows);
+      dbContext = formatMessageContext(filterBadRequestHistory(rows));
     } catch (dbError) {
       req.log.error({ err: dbError }, "Error leyendo la DB");
       dbContext = "Error al conectar con la base de datos.";
@@ -107,13 +108,25 @@ const handleDeepseekChat = async (
     let completed = false;
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+      const forceSynthesis = round === MAX_TOOL_ROUNDS - 1;
+      const roundMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
+        forceSynthesis
+          ? [
+              ...messages,
+              {
+                role: "system",
+                content:
+                  "Esta es la ronda final. Sintetiza ahora los hallazgos y resultados de herramientas disponibles; no solicites ni ejecutes más herramientas.",
+              },
+            ]
+          : messages;
       const request = {
-        model: "deepseek-flash",
+        model: "deepseek-chat",
         stream: true,
         max_tokens: 4096,
-        messages,
+        messages: roundMessages,
         tools: DEEPSEEK_TOOLS,
-        tool_choice: "auto",
+        tool_choice: forceSynthesis ? "none" : "auto",
         extra_body: { thinking: { type: "disabled" } },
       } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
       const stream = await deepseek.chat.completions.create(
@@ -164,6 +177,14 @@ const handleDeepseekChat = async (
         break;
       }
 
+      if (forceSynthesis) {
+        res.write(
+          `data: ${JSON.stringify({ error: "No se pudo completar la síntesis final. Intenta reducir el alcance de la solicitud." })}\n\n`,
+        );
+        completed = true;
+        break;
+      }
+
       messages.push({
         role: "assistant",
         content: assistantText || null,
@@ -188,12 +209,6 @@ const handleDeepseekChat = async (
       }
 
       if (completed) break;
-      if (round === MAX_TOOL_ROUNDS - 1) {
-        res.write(
-          `data: ${JSON.stringify({ error: "He alcanzado mi límite de análisis, por favor dame instrucciones más específicas." })}\n\n`,
-        );
-        completed = true;
-      }
     }
 
     if (!completed && !controller.signal.aborted && !res.destroyed) {
