@@ -8,6 +8,10 @@ import {
   formatMessageContext,
 } from "./deepseek-prompt";
 import { executeDeepseekTool } from "./deepseek-tools";
+import {
+  emitMockDeepseekStream,
+  type DeepseekMockScenario,
+} from "./deepseek-mock-stream";
 
 const router = Router();
 const MAX_TOOL_ROUNDS = 10;
@@ -120,8 +124,19 @@ const handleDeepseekChat = async (
     return;
   }
 
+  const mockEnabled =
+    process.env.DEEPSEEK_STREAM_MOCK === "1" &&
+    process.env.NODE_ENV !== "production";
+  const requestedMock = req.header("x-sqai-mock-scenario");
+  const mockScenarios: DeepseekMockScenario[] = ["success", "tool_call", "partial_error"];
+  if (requestedMock && (!mockEnabled || !mockScenarios.includes(requestedMock as DeepseekMockScenario))) {
+    res.status(404).json({ error: "Modo de simulación no disponible." });
+    return;
+  }
+  const mockScenario = requestedMock as DeepseekMockScenario | undefined;
+
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
+  if (!apiKey && !(mockEnabled && mockScenario)) {
     res.status(503).json({
       error: "Falta configurar el secreto OPENAI_API_KEY en Replit.",
     });
@@ -142,6 +157,13 @@ const handleDeepseekChat = async (
   res.flushHeaders();
 
   try {
+    if (mockEnabled && mockScenario) {
+      await emitMockDeepseekStream(res, controller.signal, mockScenario);
+      return;
+    }
+
+    if (!apiKey) throw new Error("Falta configurar OPENAI_API_KEY.");
+
     let dbContext = "";
     try {
       const { rows } = await pool.query<{
