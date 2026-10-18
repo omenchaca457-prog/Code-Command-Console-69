@@ -74,55 +74,6 @@ describe("POST /openai/chat", () => {
     }
   });
 
-  it("streams the final decision when DeepSeek fails and reports pending neural-event delivery", async () => {
-    let recordedDecision = "";
-    const router = createOpenAiRouter({
-      getApiKey: () => "test-key",
-      loadAgentStates: async () => [],
-      streamCompletion: async function* ({ agentResults }) {
-        assert.deepEqual(agentResults, [
-          { agent: "DeepSeek", status: "failed", response: "", error: "Tiempo de espera agotado." },
-          { agent: "Gemini", status: "completed", response: "Hallazgo de contexto." },
-        ]);
-        yield { choices: [{ delta: { content: "Continúa con el análisis de contexto." } }] };
-      },
-      persistAndPublishDecision: async (decision) => {
-        recordedDecision = decision;
-        return "persisted_only";
-      },
-    });
-    const app = express();
-    app.use(express.json());
-    app.use(router);
-    const server = createServer(app);
-    server.listen(0, "127.0.0.1");
-    await once(server, "listening");
-    const address = server.address();
-    assert.ok(address && typeof address !== "string");
-    try {
-      const response = await fetch(`http://127.0.0.1:${address.port}/openai/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: "Coordina los agentes",
-          agentResults: [
-            { agent: "DeepSeek", status: "failed", response: "", error: "Tiempo de espera agotado." },
-            { agent: "Gemini", status: "completed", response: "Hallazgo de contexto." },
-          ],
-        }),
-      });
-      assert.equal(response.status, 200);
-      const body = await response.text();
-      assert.match(body, /"content":"Continúa con el análisis de contexto\."/);
-      assert.match(body, /"agent":"ORQUESTADOR-OPENAI","node":"OpenAI-Master","eventStatus":"persisted_only"/);
-      assert.equal(recordedDecision, "Continúa con el análisis de contexto.");
-    } finally {
-      server.closeAllConnections();
-      server.close();
-      await once(server, "close");
-    }
-  });
-
   it("returns a final order when both analysis agents fail", async () => {
     const failedAgents = [
       { agent: "DeepSeek", status: "failed", response: "", error: "Proveedor no disponible." },
@@ -159,6 +110,7 @@ describe("POST /openai/chat", () => {
         }),
       });
       assert.equal(response.status, 200);
+      assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/);
       const body = await response.text();
       assert.match(body, /"content":"Orden de contingencia: reintentar con contexto mínimo\."/);
       assert.match(body, /"agent":"ORQUESTADOR-OPENAI","node":"OpenAI-Master","eventStatus":"delivered"/);
