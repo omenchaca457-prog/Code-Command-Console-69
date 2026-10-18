@@ -2,6 +2,7 @@ import { createServer } from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { attachTerminalWS } from "./routes/terminal";
+import { pool } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
 
@@ -19,8 +20,28 @@ if (Number.isNaN(port) || port <= 0) {
 
 const server = createServer(app);
 
-attachTerminalWS(server);
+const terminalWss = attachTerminalWS(server);
 
 server.listen(port, () => {
   logger.info({ port }, "Server listening");
+});
+
+process.once("SIGTERM", () => {
+  logger.info("SIGTERM recibido; cerrando servidor y pool de PostgreSQL");
+  for (const client of terminalWss.clients) {
+    client.terminate();
+  }
+  server.close((error) => {
+    if (error) {
+      logger.error({ err: error }, "Error cerrando el servidor HTTP");
+      process.exitCode = 1;
+    }
+    void pool
+      .end()
+      .then(() => logger.info("Pool de PostgreSQL cerrado"))
+      .catch((poolError) => {
+        logger.error({ err: poolError }, "Error cerrando el pool de PostgreSQL");
+        process.exitCode = 1;
+      });
+  });
 });

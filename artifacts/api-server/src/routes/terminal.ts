@@ -103,4 +103,5 @@ export function attachTerminalWS(server: Server) {
   });
 
   logger.info("Terminal WebSocket server attached at /api/terminal/ws");
+  return wss;
 }

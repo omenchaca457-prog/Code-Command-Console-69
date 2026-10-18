@@ -1,9 +1,11 @@
 import OpenAI from "openai";
 import { Router, type Request, type Response } from "express";
 import { DeepseekChatBody } from "@workspace/api-zod";
-import { desc } from "drizzle-orm";
-import { db, snippetsTable } from "@workspace/db";
-import { buildDeepseekMessages } from "./deepseek-prompt";
+import { pool } from "@workspace/db";
+import {
+  buildDeepseekMessages,
+  formatConversationContext,
+} from "./deepseek-prompt";
 
 const router = Router();
 
@@ -39,28 +41,20 @@ const handleDeepseekChat = async (
   res.flushHeaders();
 
   try {
-    let savedSnippets;
+    let dbContext = "";
     try {
-      savedSnippets = await db
-        .select({
-          title: snippetsTable.title,
-          language: snippetsTable.language,
-          code: snippetsTable.code,
-        })
-        .from(snippetsTable)
-        .orderBy(desc(snippetsTable.updatedAt))
-        .limit(5);
-    } catch {
-      throw new DatabaseContextError(
-        "No se pudo cargar el contexto guardado en PostgreSQL.",
+      const { rows } = await pool.query<{
+        id: number;
+        title: string;
+        created_at: Date;
+      }>(
+        "SELECT id, title, created_at FROM conversations ORDER BY created_at DESC, id DESC LIMIT 5",
       );
+      dbContext = formatConversationContext(rows);
+    } catch (dbError) {
+      req.log.error({ err: dbError }, "Error leyendo la DB");
+      dbContext = "Error al conectar con la base de datos.";
     }
-    const dbContext = savedSnippets
-      .map(
-        (snippet, index) =>
-          `Snippet ${index + 1}: ${snippet.title} (${snippet.language})\n${snippet.code.slice(0, 2500)}`,
-      )
-      .join("\n\n");
 
     const deepseek = new OpenAI({
       apiKey,
@@ -97,9 +91,7 @@ const handleDeepseekChat = async (
           ? (error as { status?: unknown }).status
           : undefined;
       const message =
-        error instanceof DatabaseContextError
-          ? error.message
-          : providerStatus === 402
+        providerStatus === 402
           ? "La cuenta de DeepSeek no tiene saldo disponible. Añade saldo o configura otra clave."
           : "No se pudo completar la consulta a DeepSeek.";
       res.write(
@@ -112,8 +104,6 @@ const handleDeepseekChat = async (
     if (!res.writableEnded) res.end();
   }
 };
-
-class DatabaseContextError extends Error {}
 
 router.post("/deepseek/chat", handleDeepseekChat);
 router.post("/chat", handleDeepseekChat);
