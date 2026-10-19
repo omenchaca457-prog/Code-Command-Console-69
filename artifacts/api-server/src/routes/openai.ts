@@ -291,9 +291,12 @@ export function createOpenAiRouter(
       res.json({ url });
     } catch (error) {
       const details = error && typeof error === "object"
-        ? error as { status?: unknown; code?: unknown }
+        ? error as { status?: unknown; code?: unknown; param?: unknown }
         : {};
-      req.log.error({ status: details.status, code: details.code }, "Falló la generación de imagen con OpenAI");
+      req.log.error(
+        { status: details.status, code: details.code, param: details.param },
+        "Falló la generación de imagen con OpenAI",
+      );
       res.status(502).json({ error: getOpenAiImageFailureMessage(error) });
     }
   });
