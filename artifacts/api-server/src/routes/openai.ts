@@ -5,6 +5,7 @@ import { publishNeuralEvent } from "./neural-event-bus.ts";
 const AGENT_ID = "orquestador-openai";
 const AGENT_NAME = "ORQUESTADOR-OPENAI";
 const MAX_PROMPT_LENGTH = 30_000;
+const MAX_IMAGE_PROMPT_LENGTH = 4_000;
 const SYSTEM_PROMPT =
   "Eres ORQUESTADOR-OPENAI. Lee el estado real de los agentes proporcionado desde PostgreSQL " +
   "y emite una orden final concreta, breve y accionable para coordinar el enjambre. " +
@@ -51,6 +52,17 @@ export function getOpenAiFailureMessage(error: unknown): string {
   return "OpenAI no pudo completar la orden. Revisa la conexión del proveedor.";
 }
 
+export function getOpenAiImageFailureMessage(error: unknown): string {
+  const details = error && typeof error === "object"
+    ? error as { status?: unknown; code?: unknown }
+    : {};
+  if (details.status === 401 || details.code === "invalid_api_key") return "OpenAI rechazó la credencial. Revisa el Secret chatgpt.";
+  if (details.status === 403) return "La cuenta de OpenAI no tiene permiso para usar DALL-E 3.";
+  if (details.code === "credit_balance_exhausted") return "La cuenta o proyecto de OpenAI agotó sus créditos. Revisa la facturación de OpenAI.";
+  if (details.status === 429) return "OpenAI alcanzó su límite de solicitudes. Inténtalo de nuevo más tarde.";
+  return "OpenAI no pudo generar la imagen. Revisa la conexión del proveedor.";
+}
+
 type OpenAiRouteDependencies = {
   getApiKey: () => string | undefined;
   loadAgentStates: () => Promise<AgentState[]>;
@@ -60,6 +72,7 @@ type OpenAiRouteDependencies = {
     agentResults: AgentResult[];
   }) => AsyncIterable<ChatChunk>;
   persistAndPublishDecision: (content: string) => Promise<DecisionEventStatus>;
+  generateImage: (input: { prompt: string }) => Promise<string>;
 };
 
 const defaultDependencies: OpenAiRouteDependencies = {
@@ -107,6 +120,21 @@ const defaultDependencies: OpenAiRouteDependencies = {
       ],
     });
     for await (const chunk of stream) yield chunk;
+  },
+  generateImage: async ({ prompt }) => {
+    const apiKey = getConfiguredOpenAiKey();
+    if (!apiKey) throw new Error("OpenAI is not configured");
+    const client = new OpenAI({ apiKey });
+    const result = await client.images.generate({
+      model: "dall-e-3",
+      prompt,
+      n: 1,
+      size: "1024x1024",
+      quality: "standard",
+    });
+    const url = result.data?.[0]?.url;
+    if (!url) throw new Error("OpenAI returned no image URL");
+    return url;
   },
   persistAndPublishDecision: async (content) => {
     const { agentsTable, db, neuralEventsTable } = await import("@workspace/db");
@@ -241,6 +269,32 @@ export function createOpenAiRouter(
       } else if (!res.headersSent) {
         res.status(502).json({ error: "No se pudo completar la consulta a OpenAI." });
       }
+    }
+  });
+
+  router.post("/openai/image", async (req: Request, res: Response): Promise<void> => {
+    const prompt = req.body?.prompt;
+    if (typeof prompt !== "string" || !prompt.trim()) {
+      res.status(400).json({ error: "Escribe una descripción para la imagen." });
+      return;
+    }
+    if (prompt.length > MAX_IMAGE_PROMPT_LENGTH) {
+      res.status(400).json({ error: "La descripción no puede superar los 4000 caracteres." });
+      return;
+    }
+    if (!dependencies.getApiKey()) {
+      res.status(503).json({ error: "OpenAI no está configurado. Añade el Secret chatgpt." });
+      return;
+    }
+    try {
+      const url = await dependencies.generateImage({ prompt: prompt.trim() });
+      res.json({ url });
+    } catch (error) {
+      const details = error && typeof error === "object"
+        ? error as { status?: unknown; code?: unknown }
+        : {};
+      req.log.error({ status: details.status, code: details.code }, "Falló la generación de imagen con OpenAI");
+      res.status(502).json({ error: getOpenAiImageFailureMessage(error) });
     }
   });
 

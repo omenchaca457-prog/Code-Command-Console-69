@@ -6,7 +6,7 @@ import {
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 
-export type NeuralOrigin = "terminal" | "runner" | "agents";
+export type NeuralOrigin = "terminal" | "runner" | "agents" | "creator";
 export type NeuralEvent = {
   id: number;
   origin: NeuralOrigin;

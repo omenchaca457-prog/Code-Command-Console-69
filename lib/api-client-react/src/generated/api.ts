@@ -31,6 +31,8 @@ import type {
   ExecuteResult,
   GetTerminalMessagesParams,
   HealthStatus,
+  ImageGenerationInput,
+  ImageGenerationResult,
   LanguageList,
   NeuralEvent,
   NeuralEventInput,
@@ -605,6 +607,92 @@ export const useCreateNeuralEvent = <
   TContext
 > => {
   return useMutation(getCreateNeuralEventMutationOptions(options));
+};
+
+/**
+ * @summary Generate an image with DALL-E 3
+ */
+export const getGenerateOpenAiImageUrl = () => {
+  return `/api/openai/image`;
+};
+
+export const generateOpenAiImage = async (
+  imageGenerationInput: ImageGenerationInput,
+  options?: RequestInit,
+): Promise<ImageGenerationResult> => {
+  return customFetch<ImageGenerationResult>(getGenerateOpenAiImageUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(imageGenerationInput),
+  });
+};
+
+export const getGenerateOpenAiImageMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateOpenAiImage>>,
+    TError,
+    { data: BodyType<ImageGenerationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateOpenAiImage>>,
+  TError,
+  { data: BodyType<ImageGenerationInput> },
+  TContext
+> => {
+  const mutationKey = ["generateOpenAiImage"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateOpenAiImage>>,
+    { data: BodyType<ImageGenerationInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generateOpenAiImage(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateOpenAiImageMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateOpenAiImage>>
+>;
+export type GenerateOpenAiImageMutationBody = BodyType<ImageGenerationInput>;
+export type GenerateOpenAiImageMutationError = ErrorType<void>;
+
+/**
+ * @summary Generate an image with DALL-E 3
+ */
+export const useGenerateOpenAiImage = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateOpenAiImage>>,
+    TError,
+    { data: BodyType<ImageGenerationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateOpenAiImage>>,
+  TError,
+  { data: BodyType<ImageGenerationInput> },
+  TContext
+> => {
+  return useMutation(getGenerateOpenAiImageMutationOptions(options));
 };
 
 /**

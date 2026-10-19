@@ -13,4 +13,5 @@ export const NeuralEventOrigin = {
   terminal: "terminal",
   runner: "runner",
   agents: "agents",
+  creator: "creator",
 } as const;

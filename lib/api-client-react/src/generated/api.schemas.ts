@@ -60,6 +60,7 @@ export const NeuralEventOrigin = {
   terminal: "terminal",
   runner: "runner",
   agents: "agents",
+  creator: "creator",
 } as const;
 
 export interface NeuralEvent {
@@ -77,6 +78,7 @@ export const NeuralEventInputOrigin = {
   terminal: "terminal",
   runner: "runner",
   agents: "agents",
+  creator: "creator",
 } as const;
 
 export interface NeuralEventInput {
@@ -91,6 +93,18 @@ export interface NeuralEventInput {
    * @maxLength 2000
    */
   content: string;
+}
+
+export interface ImageGenerationInput {
+  /**
+   * @minLength 1
+   * @maxLength 4000
+   */
+  prompt: string;
+}
+
+export interface ImageGenerationResult {
+  url: string;
 }
 
 export interface CreateSnippetBody {

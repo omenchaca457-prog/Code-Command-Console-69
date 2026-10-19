@@ -207,3 +207,37 @@ describe("POST /openai/chat", () => {
     }
   });
 });
+
+describe("POST /openai/image", () => {
+  it("returns the DALL-E image URL for a valid prompt", async () => {
+    let receivedPrompt = "";
+    const app = express();
+    app.use(express.json());
+    app.use(createOpenAiRouter({
+      getApiKey: () => "test-key",
+      generateImage: async ({ prompt }) => {
+        receivedPrompt = prompt;
+        return "https://images.example/generated.png";
+      },
+    }));
+    const server = createServer(app);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/openai/image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "  Neon observatory  " }),
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { url: "https://images.example/generated.png" });
+      assert.equal(receivedPrompt, "Neon observatory");
+    } finally {
+      server.closeAllConnections();
+      server.close();
+      await once(server, "close");
+    }
+  });
+});

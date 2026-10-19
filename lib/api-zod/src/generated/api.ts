@@ -72,7 +72,7 @@ export const CreateSnippetBody = zod.object({
  */
 export const ListNeuralEventsResponseItem = zod.object({
   id: zod.number(),
-  origin: zod.enum(["terminal", "runner", "agents"]),
+  origin: zod.enum(["terminal", "runner", "agents", "creator"]),
   eventType: zod.string(),
   content: zod.string(),
   createdAt: zod.coerce.date(),
@@ -87,9 +87,22 @@ export const createNeuralEventBodyEventTypeMax = 80;
 export const createNeuralEventBodyContentMax = 2000;
 
 export const CreateNeuralEventBody = zod.object({
-  origin: zod.enum(["terminal", "runner", "agents"]),
+  origin: zod.enum(["terminal", "runner", "agents", "creator"]),
   eventType: zod.string().min(1).max(createNeuralEventBodyEventTypeMax),
   content: zod.string().min(1).max(createNeuralEventBodyContentMax),
+});
+
+/**
+ * @summary Generate an image with DALL-E 3
+ */
+export const generateOpenAiImageBodyPromptMax = 4000;
+
+export const GenerateOpenAiImageBody = zod.object({
+  prompt: zod.string().min(1).max(generateOpenAiImageBodyPromptMax),
+});
+
+export const GenerateOpenAiImageResponse = zod.object({
+  url: zod.string().url(),
 });
 
 /**

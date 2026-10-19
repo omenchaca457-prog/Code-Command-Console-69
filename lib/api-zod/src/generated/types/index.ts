@@ -30,6 +30,8 @@ export * from "./executeResult";
 export * from "./getTerminalMessagesConversationId";
 export * from "./getTerminalMessagesParams";
 export * from "./healthStatus";
+export * from "./imageGenerationInput";
+export * from "./imageGenerationResult";
 export * from "./language";
 export * from "./languageList";
 export * from "./neuralEvent";
