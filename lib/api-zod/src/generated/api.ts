@@ -93,7 +93,7 @@ export const CreateNeuralEventBody = zod.object({
 });
 
 /**
- * @summary Generate an image with DALL-E 3
+ * @summary Generate an image with GPT-Image-2.5
  */
 export const generateOpenAiImageBodyPromptMax = 4000;
 
@@ -102,7 +102,14 @@ export const GenerateOpenAiImageBody = zod.object({
 });
 
 export const GenerateOpenAiImageResponse = zod.object({
-  url: zod.string().url(),
+  url: zod.string(),
+});
+
+/**
+ * @summary Retrieve a generated image
+ */
+export const GetOpenAiImageParams = zod.object({
+  imageId: zod.coerce.string().uuid(),
 });
 
 /**

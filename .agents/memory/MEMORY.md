@@ -2,3 +2,4 @@
 - [Agent Ω data quality](agent-omega-quality.md) — Missing evidence is unknown (NULL/N/D), not a measured zero; preserve failure counts without inventing metrics.
 - [Autonomous write notices](autonomous-write-notices.md) — Keep file-write success separate from event persistence and live delivery; avoid unsafe retries.
 - [Cortex agent orchestration](cortex-agent-orchestration.md) — DeepSeek and Gemini analyze in parallel; OpenAI coordinates them and issues the final order.
+- [Replit App Storage client](replit-app-storage.md) — Use the Replit SDK with an explicit bucket ID; raw GCS lacks the managed ADC setup.

@@ -15,6 +15,7 @@ import { useNeuralContext } from "@/lib/neural-context";
 export default function Creator() {
   const [prompt, setPrompt] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [imageDimensions, setImageDimensions] = useState("AUTO");
   const [error, setError] = useState("");
   const generateImage = useGenerateOpenAiImage();
   const { recordEvent } = useNeuralContext();
@@ -25,13 +26,14 @@ export default function Creator() {
     if (!cleanPrompt || cleanPrompt.length > 4000 || isPending) return;
     setError("");
     setImageUrl("");
+      setImageDimensions("AUTO");
     try {
       const result = await generateImage.mutateAsync({ data: { prompt: cleanPrompt } });
       setImageUrl(result.url);
       recordEvent({
         origin: "creator",
         eventType: "image_gen",
-        content: `Imagen generada con DALL-E 3: ${cleanPrompt.slice(0, 1800)}`,
+        content: `Imagen generada con GPT-Image-2.5: ${cleanPrompt.slice(0, 1800)}`,
       });
     } catch (cause) {
       const message = cause instanceof Error && cause.message
@@ -63,7 +65,7 @@ export default function Creator() {
           </div>
           <div className="flex items-center gap-2 border border-white/10 bg-white/[.025] px-3 py-2 font-mono text-[10px] uppercase tracking-[.15em] text-[#a4a6a4]">
             <span className="h-1.5 w-1.5 rounded-full bg-[#d8ff3e] shadow-[0_0_10px_rgba(216,255,62,.55)]" aria-hidden="true" />
-            Motor de imagen <span className="text-[#f1f0eb]">DALL·E 3</span>
+            Motor de imagen <span className="text-[#f1f0eb]">GPT-Image-2.5 Sunburst</span>
           </div>
         </header>
 
@@ -102,7 +104,7 @@ export default function Creator() {
               <span id="prompt-count" aria-live="polite" className="font-mono text-[10px] tabular-nums text-[#777980]">
                 <span className={prompt.length > 3800 ? "text-[#ffc35c]" : "text-[#d8ff3e]"}>{prompt.length}</span> / 4000
               </span>
-              <span className="font-mono text-[10px] uppercase tracking-wider text-[#777980]">1024 × 1024</span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-[#777980]">{imageDimensions}</span>
             </div>
             <button
               data-testid="button-generate-image"
@@ -156,6 +158,7 @@ export default function Creator() {
                       data-testid="img-generated-image"
                       src={imageUrl}
                       alt={prompt.trim()}
+                      onLoad={(event) => setImageDimensions(`${event.currentTarget.naturalWidth} × ${event.currentTarget.naturalHeight}`)}
                       className="mx-auto max-h-[62vh] w-auto max-w-full object-contain"
                     />
                     <a

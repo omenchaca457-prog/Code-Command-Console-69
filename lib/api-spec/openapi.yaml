@@ -132,7 +132,7 @@ paths:
     post:
       operationId: generateOpenAiImage
       tags: [ai]
-      summary: Generate an image with DALL-E 3
+      summary: Generate an image with GPT-Image-2.5
       requestBody:
         required: true
         content:
@@ -152,6 +152,28 @@ paths:
           description: OpenAI image generation failed
         "503":
           description: OpenAI is not configured
+  /openai/image/{imageId}:
+    get:
+      operationId: getOpenAiImage
+      tags: [ai]
+      summary: Retrieve a generated image
+      parameters:
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Generated PNG image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Image not found
 
   /snippets/recent:
     get:
@@ -545,7 +567,7 @@ components:
       properties:
         url:
           type: string
-          format: uri
+          format: uri-reference
       required: [url]
 
     CreateSnippetBody:

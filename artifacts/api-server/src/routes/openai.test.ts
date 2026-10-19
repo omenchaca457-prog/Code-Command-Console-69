@@ -209,7 +209,7 @@ describe("POST /openai/chat", () => {
 });
 
 describe("POST /openai/image", () => {
-  it("returns the DALL-E image URL for a valid prompt", async () => {
+  it("stores and returns the generated image URL for a valid prompt", async () => {
     let receivedPrompt = "";
     const app = express();
     app.use(express.json());
@@ -217,8 +217,9 @@ describe("POST /openai/image", () => {
       getApiKey: () => "test-key",
       generateImage: async ({ prompt }) => {
         receivedPrompt = prompt;
-        return "https://images.example/generated.png";
+        return Buffer.from("mock-png").toString("base64");
       },
+      storeImage: async () => "123e4567-e89b-12d3-a456-426614174000",
     }));
     const server = createServer(app);
     server.listen(0, "127.0.0.1");
@@ -232,7 +233,9 @@ describe("POST /openai/image", () => {
         body: JSON.stringify({ prompt: "  Neon observatory  " }),
       });
       assert.equal(response.status, 200);
-      assert.deepEqual(await response.json(), { url: "https://images.example/generated.png" });
+      assert.deepEqual(await response.json(), {
+        url: "/api/openai/image/123e4567-e89b-12d3-a456-426614174000",
+      });
       assert.equal(receivedPrompt, "Neon observatory");
     } finally {
       server.closeAllConnections();

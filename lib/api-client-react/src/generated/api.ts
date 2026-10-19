@@ -610,7 +610,7 @@ export const useCreateNeuralEvent = <
 };
 
 /**
- * @summary Generate an image with DALL-E 3
+ * @summary Generate an image with GPT-Image-2.5
  */
 export const getGenerateOpenAiImageUrl = () => {
   return `/api/openai/image`;
@@ -673,7 +673,7 @@ export type GenerateOpenAiImageMutationBody = BodyType<ImageGenerationInput>;
 export type GenerateOpenAiImageMutationError = ErrorType<void>;
 
 /**
- * @summary Generate an image with DALL-E 3
+ * @summary Generate an image with GPT-Image-2.5
  */
 export const useGenerateOpenAiImage = <
   TError = ErrorType<void>,
@@ -694,6 +694,93 @@ export const useGenerateOpenAiImage = <
 > => {
   return useMutation(getGenerateOpenAiImageMutationOptions(options));
 };
+
+/**
+ * @summary Retrieve a generated image
+ */
+export const getGetOpenAiImageUrl = (imageId: string) => {
+  return `/api/openai/image/${imageId}`;
+};
+
+export const getOpenAiImage = async (
+  imageId: string,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getGetOpenAiImageUrl(imageId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetOpenAiImageQueryKey = (imageId: string) => {
+  return [`/api/openai/image/${imageId}`] as const;
+};
+
+export const getGetOpenAiImageQueryOptions = <
+  TData = Awaited<ReturnType<typeof getOpenAiImage>>,
+  TError = ErrorType<void>,
+>(
+  imageId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getOpenAiImage>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetOpenAiImageQueryKey(imageId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getOpenAiImage>>> = ({
+    signal,
+  }) => getOpenAiImage(imageId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!imageId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getOpenAiImage>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetOpenAiImageQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getOpenAiImage>>
+>;
+export type GetOpenAiImageQueryError = ErrorType<void>;
+
+/**
+ * @summary Retrieve a generated image
+ */
+
+export function useGetOpenAiImage<
+  TData = Awaited<ReturnType<typeof getOpenAiImage>>,
+  TError = ErrorType<void>,
+>(
+  imageId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getOpenAiImage>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetOpenAiImageQueryOptions(imageId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get the 5 most recently used snippets

@@ -1,4 +1,6 @@
 import { Router, type Request, type Response } from "express";
+import { randomUUID } from "node:crypto";
+import { Client as ObjectStorageClient } from "@replit/object-storage";
 import OpenAI from "openai";
 import { publishNeuralEvent } from "./neural-event-bus.ts";
 
@@ -57,7 +59,7 @@ export function getOpenAiImageFailureMessage(error: unknown): string {
     ? error as { status?: unknown; code?: unknown }
     : {};
   if (details.status === 401 || details.code === "invalid_api_key") return "OpenAI rechazó la credencial. Revisa el Secret chatgpt.";
-  if (details.status === 403) return "La cuenta de OpenAI no tiene permiso para usar DALL-E 3.";
+  if (details.status === 403) return "La cuenta de OpenAI no tiene permiso para generar imágenes.";
   if (details.code === "credit_balance_exhausted") return "La cuenta o proyecto de OpenAI agotó sus créditos. Revisa la facturación de OpenAI.";
   if (details.status === 429) return "OpenAI alcanzó su límite de solicitudes. Inténtalo de nuevo más tarde.";
   return "OpenAI no pudo generar la imagen. Revisa la conexión del proveedor.";
@@ -73,7 +75,19 @@ type OpenAiRouteDependencies = {
   }) => AsyncIterable<ChatChunk>;
   persistAndPublishDecision: (content: string) => Promise<DecisionEventStatus>;
   generateImage: (input: { prompt: string }) => Promise<string>;
+  storeImage: (image: Buffer) => Promise<string>;
 };
+
+let objectStorage: ObjectStorageClient | undefined;
+
+function getObjectStorageClient() {
+  if (!objectStorage) {
+    const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+    if (!bucketId) throw new Error("App Storage is not configured.");
+    objectStorage = new ObjectStorageClient({ bucketId });
+  }
+  return objectStorage;
+}
 
 const defaultDependencies: OpenAiRouteDependencies = {
   getApiKey: getConfiguredOpenAiKey,
@@ -126,15 +140,20 @@ const defaultDependencies: OpenAiRouteDependencies = {
     if (!apiKey) throw new Error("OpenAI is not configured");
     const client = new OpenAI({ apiKey });
     const result = await client.images.generate({
-      model: "dall-e-3",
+      model: "gpt-image-2.5-sunburst",
       prompt,
       n: 1,
-      size: "1024x1024",
-      quality: "standard",
+      output_format: "png",
     });
-    const url = result.data?.[0]?.url;
-    if (!url) throw new Error("OpenAI returned no image URL");
-    return url;
+    const imageData = result.data?.[0]?.b64_json;
+    if (!imageData) throw new Error("OpenAI returned no image data");
+    return imageData;
+  },
+  storeImage: async (image) => {
+    const id = randomUUID();
+    const result = await getObjectStorageClient().uploadFromBytes(`creator/${id}.png`, image);
+    if (!result.ok) throw new Error("App Storage no pudo guardar la imagen.");
+    return id;
   },
   persistAndPublishDecision: async (content) => {
     const { agentsTable, db, neuralEventsTable } = await import("@workspace/db");
@@ -287,8 +306,9 @@ export function createOpenAiRouter(
       return;
     }
     try {
-      const url = await dependencies.generateImage({ prompt: prompt.trim() });
-      res.json({ url });
+      const encodedImage = await dependencies.generateImage({ prompt: prompt.trim() });
+      const id = await dependencies.storeImage(Buffer.from(encodedImage, "base64"));
+      res.json({ url: `/api/openai/image/${id}` });
     } catch (error) {
       const details = error && typeof error === "object"
         ? error as { status?: unknown; code?: unknown; param?: unknown }
@@ -298,6 +318,29 @@ export function createOpenAiRouter(
         "Falló la generación de imagen con OpenAI",
       );
       res.status(502).json({ error: getOpenAiImageFailureMessage(error) });
+    }
+  });
+
+  router.get("/openai/image/:imageId", async (req: Request, res: Response): Promise<void> => {
+    const imageId = Array.isArray(req.params.imageId)
+      ? req.params.imageId[0]
+      : req.params.imageId;
+    if (!/^[0-9a-f-]{36}$/i.test(imageId)) {
+      res.status(404).json({ error: "Imagen no encontrada." });
+      return;
+    }
+    try {
+      const result = await getObjectStorageClient().downloadAsBytes(`creator/${imageId}.png`);
+      if (!result.ok) {
+        res.status(404).json({ error: "Imagen no encontrada." });
+        return;
+      }
+      const [imageBytes] = Array.isArray(result.value) ? result.value : [result.value];
+      if (!Buffer.isBuffer(imageBytes)) throw new Error("App Storage returned an invalid image.");
+      res.set({ "Content-Type": "image/png", "Cache-Control": "public, max-age=31536000, immutable" });
+      res.end(imageBytes);
+    } catch {
+      res.status(500).json({ error: "No se pudo cargar la imagen." });
     }
   });
 
