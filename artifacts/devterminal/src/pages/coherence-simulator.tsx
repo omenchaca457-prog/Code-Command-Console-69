@@ -46,6 +46,8 @@ async function requestControl(action: "start" | "stop"): Promise<SimulationStatu
 export default function CoherenceSimulator() {
   const [status, setStatus] = useState(EMPTY_STATUS);
   const [historyPage, setHistoryPage] = useState(1);
+  const [historySnapshotId, setHistorySnapshotId] = useState<number | undefined>();
+  const [historyGeneration, setHistoryGeneration] = useState(0);
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -53,11 +55,14 @@ export default function CoherenceSimulator() {
   const { recordEvent } = useNeuralContext();
   const recordEventRef = useRef(recordEvent);
   const historyQuery = useListCoherenceSimulationLogPages(
-    { page: historyPage, pageSize: HISTORY_PAGE_SIZE },
+    { page: historyPage, pageSize: HISTORY_PAGE_SIZE, snapshotId: historySnapshotId },
     {
       query: {
-        queryKey: getListCoherenceSimulationLogPagesQueryKey({ page: historyPage, pageSize: HISTORY_PAGE_SIZE }),
-        refetchInterval: status.running ? 10_000 : false,
+        queryKey: [...getListCoherenceSimulationLogPagesQueryKey({
+          page: historyPage,
+          pageSize: HISTORY_PAGE_SIZE,
+          snapshotId: historySnapshotId,
+        }), historyGeneration],
       },
     },
   );
@@ -65,6 +70,22 @@ export default function CoherenceSimulator() {
   useEffect(() => {
     recordEventRef.current = recordEvent;
   }, [recordEvent]);
+
+  useEffect(() => {
+    if (historyPage === 1 && historySnapshotId === undefined && historyQuery.data?.snapshotId !== null) {
+      const nextSnapshotId = historyQuery.data?.snapshotId;
+      if (nextSnapshotId !== undefined) setHistorySnapshotId(nextSnapshotId);
+    }
+  }, [historyPage, historyQuery.data?.snapshotId, historySnapshotId]);
+
+  useEffect(() => {
+    if (!status.running || historyPage !== 1) return;
+    const refreshHistorySnapshot = window.setInterval(() => {
+      setHistorySnapshotId(undefined);
+      setHistoryGeneration((generation) => generation + 1);
+    }, 10_000);
+    return () => window.clearInterval(refreshHistorySnapshot);
+  }, [historyPage, status.running]);
 
   useEffect(() => {
     let alive = true;
@@ -228,7 +249,9 @@ export default function CoherenceSimulator() {
                 <History className="h-4 w-4" aria-hidden /> Historial guardado
               </div>
               <p className="mt-1 text-xs text-[#75818d]">
-                {status.running ? "Se actualiza automáticamente mientras el motor está activo." : "Muestras persistidas en PostgreSQL."}
+                {status.running
+                  ? "Se actualiza automáticamente en la primera página mientras el motor está activo."
+                  : "Muestras persistidas en PostgreSQL."}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -238,7 +261,11 @@ export default function CoherenceSimulator() {
               <button
                 type="button"
                 data-testid="button-refresh-history"
-                onClick={() => void historyQuery.refetch()}
+                onClick={() => {
+                  setHistoryPage(1);
+                  setHistorySnapshotId(undefined);
+                  setHistoryGeneration((generation) => generation + 1);
+                }}
                 disabled={historyQuery.isFetching}
                 className="inline-flex min-h-9 items-center gap-2 border border-white/10 px-3 font-mono text-[9px] uppercase tracking-wider text-[#9eabb5] transition hover:border-[#00f0ff]/40 hover:text-[#00f0ff] disabled:opacity-50"
               >
@@ -293,7 +320,12 @@ export default function CoherenceSimulator() {
             page={historyPage}
             pageCount={historyPages}
             isFetching={historyQuery.isFetching}
-            onPageChange={setHistoryPage}
+            onPageChange={(page) => {
+              if (historySnapshotId === undefined && history?.snapshotId != null) {
+                setHistorySnapshotId(history.snapshotId);
+              }
+              setHistoryPage(page);
+            }}
           />
         </section>
 

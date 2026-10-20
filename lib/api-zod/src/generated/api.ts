@@ -254,6 +254,7 @@ export const ListCoherenceSimulationLogPagesQueryParams = zod.object({
     .min(1)
     .max(listCoherenceSimulationLogPagesQueryPageSizeMax)
     .default(listCoherenceSimulationLogPagesQueryPageSizeDefault),
+  snapshotId: zod.coerce.number().min(1).optional(),
 });
 
 export const ListCoherenceSimulationLogPagesResponse = zod.object({
@@ -270,6 +271,7 @@ export const ListCoherenceSimulationLogPagesResponse = zod.object({
   page: zod.number(),
   pageSize: zod.number(),
   total: zod.number(),
+  snapshotId: zod.union([zod.number(), zod.null()]),
 });
 
 /**

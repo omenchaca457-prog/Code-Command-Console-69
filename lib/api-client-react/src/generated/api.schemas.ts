@@ -169,6 +169,7 @@ export interface CoherenceSimulationLogOffsetPage {
   page: number;
   pageSize: number;
   total: number;
+  snapshotId: number | null;
 }
 
 export interface ImageGenerationInput {
@@ -385,6 +386,10 @@ export type ListCoherenceSimulationLogPagesParams = {
    * @maximum 100
    */
   pageSize?: number;
+  /**
+   * @minimum 1
+   */
+  snapshotId?: number;
 };
 
 export type GetTerminalMessagesParams = {

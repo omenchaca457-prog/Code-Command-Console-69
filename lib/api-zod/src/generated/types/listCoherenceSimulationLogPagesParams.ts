@@ -16,4 +16,8 @@ export type ListCoherenceSimulationLogPagesParams = {
    * @maximum 100
    */
   pageSize?: number;
+  /**
+   * @minimum 1
+   */
+  snapshotId?: number;
 };

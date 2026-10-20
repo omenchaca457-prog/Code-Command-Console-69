@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { count, desc, lt } from "drizzle-orm";
+import { count, desc, lte, lt } from "drizzle-orm";
 import {
   getSimulationStatus,
   startSimulation,
@@ -13,7 +13,7 @@ type CoherenceSimulationRouteDependencies = {
   simulator?: CoherenceSimulator;
   persistSample?: (sample: CoherenceSample) => Promise<void>;
   loadLogs?: (limit: number, beforeId?: number) => Promise<SimulationLogPage>;
-  listLogs?: (page: number, pageSize: number) => Promise<SimulationLogOffsetPage>;
+  listLogs?: (page: number, pageSize: number, snapshotId?: number) => Promise<SimulationLogOffsetPage>;
   parseLogsQuery?: (query: unknown) => Promise<LogsQueryParseResult>;
   parseLogsPage?: (page: SimulationLogOffsetPage) => Promise<SimulationLogOffsetPage>;
 };
@@ -37,10 +37,11 @@ type SimulationLogOffsetPage = {
   page: number;
   pageSize: number;
   total: number;
+  snapshotId: number | null;
 };
 
 type LogsQueryParseResult =
-  | { success: true; data: { page: number; pageSize: number } }
+  | { success: true; data: { page: number; pageSize: number; snapshotId?: number } }
   | { success: false; error: { message: string } };
 
 const defaultSimulator: CoherenceSimulator = {
@@ -77,16 +78,29 @@ async function loadSimulationLogs(limit: number, beforeId?: number): Promise<Sim
   };
 }
 
-async function listSimulationLogPages(page: number, pageSize: number): Promise<SimulationLogOffsetPage> {
+async function listSimulationLogPages(
+  page: number,
+  pageSize: number,
+  requestedSnapshotId?: number,
+): Promise<SimulationLogOffsetPage> {
   const { db, simulationLogsTable } = await import("@workspace/db");
+  const snapshotId = requestedSnapshotId ?? (
+    await db
+      .select({ id: simulationLogsTable.id })
+      .from(simulationLogsTable)
+      .orderBy(desc(simulationLogsTable.id))
+      .limit(1)
+  )[0]?.id ?? null;
+  const snapshotFilter = snapshotId === null ? undefined : lte(simulationLogsTable.id, snapshotId);
   const [items, totals] = await Promise.all([
     db
       .select()
       .from(simulationLogsTable)
+      .where(snapshotFilter)
       .orderBy(desc(simulationLogsTable.createdAt), desc(simulationLogsTable.id))
       .limit(pageSize)
       .offset((page - 1) * pageSize),
-    db.select({ total: count() }).from(simulationLogsTable),
+    db.select({ total: count() }).from(simulationLogsTable).where(snapshotFilter),
   ]);
 
   return {
@@ -94,6 +108,7 @@ async function listSimulationLogPages(page: number, pageSize: number): Promise<S
     page,
     pageSize,
     total: totals[0]?.total ?? 0,
+    snapshotId,
   };
 }
 
@@ -101,8 +116,8 @@ async function parseSimulationLogsQuery(query: unknown): Promise<LogsQueryParseR
   const { ListCoherenceSimulationLogPagesQueryParams } = await import("@workspace/api-zod");
   const parsed = ListCoherenceSimulationLogPagesQueryParams.safeParse(query);
   if (!parsed.success) return parsed;
-  if (!Number.isInteger(parsed.data.page) || !Number.isInteger(parsed.data.pageSize)) {
-    return { success: false, error: { message: "page and pageSize must be integers" } };
+  if (parsed.data.snapshotId !== undefined && !Number.isSafeInteger(parsed.data.snapshotId)) {
+    return { success: false, error: { message: "snapshotId must be a safe integer" } };
   }
   return parsed;
 }
@@ -147,7 +162,7 @@ export function createCoherenceSimulationRouter({
       return;
     }
 
-    const result = await listLogs(parsed.data.page, parsed.data.pageSize);
+    const result = await listLogs(parsed.data.page, parsed.data.pageSize, parsed.data.snapshotId);
     res.json(await parseLogsPage(result));
   });
 

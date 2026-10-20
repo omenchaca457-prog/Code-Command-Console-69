@@ -12,4 +12,5 @@ export interface CoherenceSimulationLogOffsetPage {
   page: number;
   pageSize: number;
   total: number;
+  snapshotId: number | null;
 }

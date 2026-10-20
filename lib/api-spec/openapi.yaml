@@ -241,6 +241,12 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
+        - name: snapshotId
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
       responses:
         "200":
           description: A page of saved simulation logs
@@ -764,7 +770,7 @@ components:
               enum: [completed]
     CoherenceSimulationLogOffsetPage:
       type: object
-      required: [items, page, pageSize, total]
+      required: [items, page, pageSize, total, snapshotId]
       properties:
         items:
           type: array
@@ -776,6 +782,10 @@ components:
           type: integer
         total:
           type: integer
+        snapshotId:
+          oneOf:
+            - type: integer
+            - type: "null"
 
     ImageGenerationInput:
       type: object

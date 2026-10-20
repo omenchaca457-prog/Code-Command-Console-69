@@ -306,6 +306,7 @@ describe("coherence simulation route", () => {
           page,
           pageSize,
           total: 21,
+          snapshotId: 21,
         };
       },
       parseLogsQuery: async (query) => {
@@ -340,6 +341,7 @@ describe("coherence simulation route", () => {
         page: 2,
         pageSize: 10,
         total: 21,
+        snapshotId: 21,
       });
       assert.deepEqual(requestedPages, [{ page: 2, pageSize: 10 }]);
 
@@ -380,20 +382,23 @@ describe("coherence simulation route", () => {
       turbulence: "1",
       vectorsProcessed: log.id * 10,
     }));
-    const requestedPages: Array<{ page: number; pageSize: number }> = [];
+    const requestedPages: Array<{ page: number; pageSize: number; snapshotId?: number }> = [];
     const router = createCoherenceSimulationRouter({
       simulator,
-      listLogs: async (page, pageSize) => {
-        requestedPages.push({ page, pageSize });
+      listLogs: async (page, pageSize, snapshotId) => {
+        requestedPages.push({ page, pageSize, ...(snapshotId === undefined ? {} : { snapshotId }) });
+        const boundaryId = snapshotId ?? Math.max(...storedLogs.map((log) => log.id));
         const orderedLogs = [...storedLogs].sort(
           (left, right) =>
             right.createdAt.getTime() - left.createdAt.getTime() || right.id - left.id,
         );
+        const snapshotLogs = orderedLogs.filter((log) => log.id <= boundaryId);
         return {
-          items: orderedLogs.slice((page - 1) * pageSize, page * pageSize),
+          items: snapshotLogs.slice((page - 1) * pageSize, page * pageSize),
           page,
           pageSize,
-          total: storedLogs.length,
+          total: snapshotLogs.length,
+          snapshotId: boundaryId,
         };
       },
       parseLogsQuery: async (query) => {
@@ -403,38 +408,59 @@ describe("coherence simulation route", () => {
         const values = query as Record<string, unknown>;
         const page = Number(values.page ?? 1);
         const pageSize = Number(values.pageSize ?? 20);
-        if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
+        const snapshotId = values.snapshotId === undefined ? undefined : Number(values.snapshotId);
+        if (
+          !Number.isSafeInteger(page) || page < 1
+          || !Number.isSafeInteger(pageSize) || pageSize < 1
+          || (snapshotId !== undefined && (!Number.isSafeInteger(snapshotId) || snapshotId < 1))
+        ) {
           return { success: false, error: { message: "Invalid pagination" } };
         }
-        return { success: true, data: { page, pageSize } };
+        return { success: true, data: { page, pageSize, ...(snapshotId === undefined ? {} : { snapshotId }) } };
       },
       parseLogsPage: async (page) => page,
     });
 
     await withServer(router, async (baseUrl) => {
       const pages: Array<Array<{ id: number; createdAt: string }>> = [];
+      let snapshotId: number | undefined;
       for (const page of [1, 2, 3]) {
-        const response = await fetch(`${baseUrl}/api/coherence-simulation/logs/page?page=${page}&pageSize=3`);
+        if (page === 2) {
+          storedLogs.push({
+            id: 11,
+            createdAt: new Date("2026-10-20T12:04:00.000Z"),
+            vector: "11",
+            coherence: 99,
+            turbulence: "1",
+            vectorsProcessed: 110,
+          });
+        }
+        const query = new URLSearchParams({ page: String(page), pageSize: "3" });
+        if (snapshotId !== undefined) query.set("snapshotId", String(snapshotId));
+        const response = await fetch(`${baseUrl}/api/coherence-simulation/logs/page?${query}`);
         assert.equal(response.status, 200);
         const result = await response.json() as {
           items: Array<{ id: number; createdAt: string }>;
           page: number;
           pageSize: number;
           total: number;
+          snapshotId: number | null;
         };
         assert.equal(result.page, page);
         assert.equal(result.pageSize, 3);
-        assert.equal(result.total, storedLogs.length);
+        assert.equal(result.total, 7);
+        if (page === 1) snapshotId = result.snapshotId ?? undefined;
+        assert.equal(snapshotId, 10);
         pages.push(result.items);
       }
 
       const ids = pages.flatMap((page) => page.map((log) => log.id));
       assert.deepEqual(ids, [10, 9, 8, 7, 6, 5, 2]);
-      assert.equal(new Set(ids).size, storedLogs.length, "No debe repetir registros entre páginas");
+      assert.equal(new Set(ids).size, 7, "No debe repetir registros entre páginas");
       assert.deepEqual(requestedPages, [
         { page: 1, pageSize: 3 },
-        { page: 2, pageSize: 3 },
-        { page: 3, pageSize: 3 },
+        { page: 2, pageSize: 3, snapshotId: 10 },
+        { page: 3, pageSize: 3, snapshotId: 10 },
       ]);
 
       for (const page of pages) {
