@@ -172,6 +172,73 @@ describe("coherence simulator", () => {
     assert.equal(persisted.length, 2);
     simulator.stopSimulation();
   });
+
+  it("keeps producing samples without overlapping slow persistence writes", async () => {
+    const { clock, simulator } = createTestSimulator();
+    const samples: CoherenceSample[] = [];
+    const pendingWrites: Array<() => void> = [];
+    let activeWrites = 0;
+    let maxActiveWrites = 0;
+    let writeCount = 0;
+    simulator.subscribeToSimulation((sample) => samples.push(sample));
+    simulator.startSimulation(() => {
+      writeCount += 1;
+      activeWrites += 1;
+      maxActiveWrites = Math.max(maxActiveWrites, activeWrites);
+
+      return new Promise<void>((resolve) => {
+        pendingWrites.push(() => {
+          activeWrites -= 1;
+          resolve();
+        });
+      });
+    });
+
+    clock.advance(SIMULATION_LOG_INTERVAL_MS);
+    assert.equal(writeCount, 1);
+    assert.equal(activeWrites, 1);
+
+    clock.advance(SIMULATION_LOG_INTERVAL_MS * 2);
+    assert.equal(samples.length, SIMULATION_LOG_INTERVAL_MS * 3 / SIMULATION_INTERVAL_MS);
+    assert.equal(writeCount, 1, "No debe iniciar otro guardado mientras el primero siga pendiente");
+    assert.equal(maxActiveWrites, 1);
+
+    pendingWrites[0]?.();
+    await flushPromises();
+    clock.advance(SIMULATION_INTERVAL_MS);
+    assert.equal(writeCount, 2, "Debe retomar los guardados cuando termine la escritura lenta");
+    assert.equal(maxActiveWrites, 1);
+
+    pendingWrites[1]?.();
+    await flushPromises();
+    simulator.stopSimulation();
+  });
+
+  it("continues emitting samples after a persistence failure and retries at the next eligible interval", async () => {
+    const { clock, simulator } = createTestSimulator();
+    const samples: CoherenceSample[] = [];
+    const persisted: CoherenceSample[] = [];
+    let attempts = 0;
+    simulator.subscribeToSimulation((sample) => samples.push(sample));
+    simulator.startSimulation(async (sample) => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("Fallo de persistencia simulado");
+      persisted.push(sample);
+    });
+
+    clock.advance(SIMULATION_LOG_INTERVAL_MS);
+    assert.equal(attempts, 1);
+    await flushPromises();
+    assert.equal(simulator.getSimulationStatus().running, true);
+
+    clock.advance(SIMULATION_LOG_INTERVAL_MS);
+    await flushPromises();
+
+    assert.equal(samples.length, SIMULATION_LOG_INTERVAL_MS * 2 / SIMULATION_INTERVAL_MS);
+    assert.equal(attempts, 2, "Debe volver a intentar el guardado en el siguiente intervalo elegible");
+    assert.deepEqual(persisted, [samples.at(-1)]);
+    simulator.stopSimulation();
+  });
 });
 
 describe("coherence simulation route", () => {
