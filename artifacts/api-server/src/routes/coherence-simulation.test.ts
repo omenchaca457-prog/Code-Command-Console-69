@@ -362,6 +362,22 @@ describe("coherence simulation route", () => {
           `pageSize=${pageSize} no debe consultar el historial`,
         );
       }
+
+      const acceptedBoundaryPages: Array<{ page: number; pageSize: number }> = [];
+      for (const pageSize of [1, 100]) {
+        const boundaryResponse = await fetch(
+          `${baseUrl}/api/coherence-simulation/logs/page?page=1&pageSize=${pageSize}`,
+        );
+        assert.equal(boundaryResponse.status, 200, `pageSize=${pageSize} debe aceptarse`);
+        const boundaryResult = await boundaryResponse.json() as { pageSize: number };
+        assert.equal(boundaryResult.pageSize, pageSize);
+
+        acceptedBoundaryPages.push({ page: 1, pageSize });
+        assert.deepEqual(requestedPages, [
+          { page: 2, pageSize: 10 },
+          ...acceptedBoundaryPages,
+        ]);
+      }
     });
   });
 
