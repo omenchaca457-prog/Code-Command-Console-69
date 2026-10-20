@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { recordServerRequest } from "./lib/runtime-diagnostics";
+import { disableTelemetryCache } from "./routes/telemetry-cache";
 
 const app: Express = express();
 
@@ -36,6 +37,9 @@ app.use((req, res, next) => {
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Telemetry is always live, including requests with old cache validators.
+app.use(["/api/healthz", "/api/agents", "/api/neural-events"], disableTelemetryCache);
 
 app.get("/", (_req, res) => {
   res.redirect(302, "/api/healthz");

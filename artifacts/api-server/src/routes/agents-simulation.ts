@@ -106,9 +106,15 @@ export async function completePersistedTask(task: SimulatedAgentTask, store?: Ag
         updatedAt: new Date(),
       },
     })
-    .returning({ xp: agentsTable.xp, omega: agentsTable.lastOmega });
+    .returning({ id: agentsTable.id, xp: agentsTable.xp, omega: agentsTable.lastOmega });
 
-  return { ...result, xp: agent?.xp ?? 0, omega: agent?.omega ?? 1 };
+  // Never substitute a shared/default score if persistence cannot confirm the
+  // exact agent row and its independently calculated result.
+  if (!agent || agent.id !== task.agentId || agent.omega === null ||
+      !Number.isFinite(agent.omega) || agent.omega < 0 || agent.omega > 1) {
+    throw new AgentSafetyViolation("No se pudo confirmar el Ω persistido del agente solicitado.");
+  }
+  return { ...result, xp: agent.xp, omega: agent.omega };
 }
 
 export function createAgentSimulationRouter({
