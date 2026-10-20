@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { executeDeepseekTool } from "./deepseek-tools";
-import { MAX_EDITOR_CODE, validateCortexInput } from "./cortex-context";
+import { MAX_EDITOR_CODE, retryContextRead, validateCortexInput } from "./cortex-context";
 import { publishNeuralEvent } from "./neural-event-bus";
 
 export function createCortexRouter() {
@@ -17,7 +17,7 @@ export function createCortexRouter() {
     }
 
     try {
-      const [workspace, diagnostics, library, integrations, neural, terminalHistory, learning, learningTotal] = await Promise.all([
+      const [workspace, diagnostics, library, integrations, neural, terminalHistory, learning, learningTotal] = await retryContextRead(() => Promise.all([
         executeDeepseekTool("get_workspace_snapshot", "{}"),
         executeDeepseekTool("get_runtime_diagnostics", "{}"),
         executeDeepseekTool("get_library_snapshot", "{}"),
@@ -41,7 +41,7 @@ export function createCortexRouter() {
           `SELECT COUNT(*)::int AS total FROM neural_events
            WHERE origin = 'terminal' AND event_type = 'cortex_learning'`,
         ),
-      ]);
+      ]));
       const context = {
         capturedAt: new Date().toISOString(),
         editor: {

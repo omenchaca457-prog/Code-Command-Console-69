@@ -92,6 +92,55 @@ function parseTestBody(body: unknown) {
 }
 
 describe("SQ-AI simulated streaming route", () => {
+  it("retries an empty completion once with an 8192 token budget", async () => {
+    let calls = 0;
+    const router = createDeepseekRouter({
+      getApiKey: () => "test-key",
+      parseBody: async body => parseTestBody(body),
+      loadHistory: async () => "",
+      executeTool: async () => "{}",
+      createClient: () => ({ chat: { completions: { create: async params => {
+        assert.equal(params.max_tokens, 8192);
+        calls += 1;
+        return (async function* () {
+          if (calls === 2) yield makeChunk({ content: "Recuperado" });
+        })();
+      } } } }),
+    });
+    await withServer(router, async baseUrl => {
+      const response = await fetch(`${baseUrl}/deepseek/chat`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "Prueba" }),
+      });
+      assert.deepEqual(getEvents(await response.text()), [{ delta: "Recuperado" }]);
+      assert.equal(calls, 2);
+    });
+  });
+
+  it("marks token-limited output as partial instead of completed analysis", async () => {
+    const router = createDeepseekRouter({
+      getApiKey: () => "test-key",
+      parseBody: async body => parseTestBody(body),
+      loadHistory: async () => "",
+      executeTool: async () => "{}",
+      createClient: () => ({ chat: { completions: { create: async () => (async function* () {
+        yield makeChunk({ content: "Parcial" });
+        const final = makeChunk({});
+        final.choices[0]!.finish_reason = "length";
+        yield final;
+      })() } } }),
+    });
+    await withServer(router, async baseUrl => {
+      const response = await fetch(`${baseUrl}/deepseek/chat`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "Prueba" }),
+      });
+      const events = getEvents(await response.text());
+      assert.equal(events[0]?.delta, "Parcial");
+      assert.match(events[1]?.error ?? "", /parcial/);
+    });
+  });
+
   it("streams every text fragment and assembles split tool-call fields before the next round", async () => {
     const requests: CreateParams[] = [];
     const executedTools: Array<[string, string]> = [];

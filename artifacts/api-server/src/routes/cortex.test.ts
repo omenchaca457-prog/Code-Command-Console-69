@@ -1,8 +1,23 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { validateCortexInput } from "./cortex-context.ts";
+import { retryContextRead, validateCortexInput } from "./cortex-context.ts";
 
 describe("Cortex context collection", () => {
+  it("retries a failed read once and propagates persistent failures", async () => {
+    let reads = 0;
+    const value = await retryContextRead(async () => {
+      if (++reads === 1) throw new Error("temporary");
+      return "recovered";
+    });
+    assert.equal(value, "recovered");
+    assert.equal(reads, 2);
+    reads = 0;
+    await assert.rejects(() => retryContextRead(async () => {
+      reads += 1;
+      throw new Error("persistent");
+    }), /persistent/);
+    assert.equal(reads, 2);
+  });
   it("bounds editor code and activity, and drops unsupported event fields", () => {
     const result = validateCortexInput({
       editor: { language: "typescript", code: "x".repeat(20_000) },

@@ -1,3 +1,4 @@
+import { retryContextRead } from "./cortex-context.ts";
 import OpenAI from "openai";
 import { Router, type Request, type Response } from "express";
 import {
@@ -180,6 +181,8 @@ const defaultDependencies: DeepseekDependencies = {
     new OpenAI({
       apiKey,
       baseURL: "https://api.deepseek.com/v1",
+      timeout: 45_000,
+      maxRetries: 1,
     }) as unknown as DeepseekClient,
   parseBody: async (body) => {
     const { DeepseekChatBody } = await import("@workspace/api-zod");
@@ -268,13 +271,13 @@ const handleDeepseekChat = async (
     }
 
     const deepseek = dependencies.createClient(apiKey);
-    const [workspace, diagnostics, library, integrations, neural] = await Promise.all([
+    const [workspace, diagnostics, library, integrations, neural] = await retryContextRead(() => Promise.all([
       dependencies.executeTool("get_workspace_snapshot", "{}"),
       dependencies.executeTool("get_runtime_diagnostics", "{}"),
       dependencies.executeTool("get_library_snapshot", "{}"),
       dependencies.executeTool("get_integrations_status", "{}"),
       dependencies.executeTool("get_neural_activity", "{}"),
-    ]);
+    ]));
     const systemContext = [
       context ?? "",
       "[ESTADO REAL DEL SISTEMA]",
@@ -289,6 +292,7 @@ const handleDeepseekChat = async (
     const notificationSummaries = new Set<string>();
     let toolCallsExecuted = 0;
     let completed = false;
+    let emptyRetries = 0;
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       const forceSynthesis = round === MAX_TOOL_ROUNDS - 1;
@@ -306,7 +310,7 @@ const handleDeepseekChat = async (
       const request = {
         model: "deepseek-chat",
         stream: true,
-        max_tokens: 4096,
+        max_tokens: 8192,
         messages: roundMessages,
         tools: DEEPSEEK_TOOLS,
         tool_choice: forceSynthesis ? "none" : "auto",
@@ -318,6 +322,7 @@ const handleDeepseekChat = async (
       );
 
       let assistantText = "";
+      let truncated = false;
       const pendingCalls = new Map<
         number,
         { id: string; name: string; arguments: string }
@@ -326,6 +331,7 @@ const handleDeepseekChat = async (
       for await (const chunk of stream) {
         if (controller.signal.aborted || res.destroyed) break;
         const delta = chunk.choices[0]?.delta;
+        if (chunk.choices[0]?.finish_reason === "length") truncated = true;
         if (typeof delta?.content === "string" && delta.content.length > 0) {
           assistantText += delta.content;
           res.write(`data: ${JSON.stringify({ delta: delta.content })}\n\n`);
@@ -352,7 +358,16 @@ const handleDeepseekChat = async (
           type: "function" as const,
           function: { name: call.name, arguments: call.arguments },
         }));
+      if (truncated) {
+        res.write(`data: ${JSON.stringify({ error: "DeepSeek alcanzó el límite de salida. La respuesta es parcial; Cortex usará el otro agente para la coordinación." })}\n\n`);
+        completed = true;
+        break;
+      }
       if (calls.length === 0) {
+        if (!assistantText.trim()) {
+          if (emptyRetries++ === 0 && !forceSynthesis) continue;
+          res.write(`data: ${JSON.stringify({ error: "DeepSeek devolvió una respuesta vacía tras reintentar. Cortex continuará con el otro agente." })}\n\n`);
+        }
         completed = true;
         break;
       }

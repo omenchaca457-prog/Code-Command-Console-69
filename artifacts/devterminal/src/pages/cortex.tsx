@@ -38,6 +38,7 @@ async function readDeepSeekStream(
   const decoder = new TextDecoder();
   let buffer = "";
   let complete = false;
+  let receivedText = false;
 
   const consume = (frame: string) => {
     const data = frame.split(/\r?\n/)
@@ -51,7 +52,10 @@ async function readDeepSeekStream(
     }
     const payload = JSON.parse(data) as { delta?: string; error?: string };
     if (payload.error) throw new Error(payload.error);
-    if (payload.delta) onDelta(payload.delta);
+    if (payload.delta) {
+      receivedText = receivedText || Boolean(payload.delta.trim());
+      onDelta(payload.delta);
+    }
   };
 
   while (!complete) {
@@ -67,6 +71,8 @@ async function readDeepSeekStream(
   }
   buffer += decoder.decode();
   if (!complete && buffer.trim()) consume(buffer);
+  if (!complete) throw new Error("El flujo de DeepSeek terminó sin confirmar su finalización.");
+  if (!receivedText) throw new Error("DeepSeek no devolvió texto.");
 }
 
 async function requestGemini(prompt: string, context: string) {
@@ -79,7 +85,7 @@ async function requestGemini(prompt: string, context: string) {
   if (!response.ok || body?.error) {
     throw new Error(body?.error || `Solicitud rechazada (${response.status}).`);
   }
-  if (typeof body?.text !== "string") throw new Error("La respuesta no contiene texto.");
+  if (typeof body?.text !== "string" || !body.text.trim()) throw new Error("La respuesta no contiene texto.");
   return body.text;
 }
 
@@ -328,13 +334,13 @@ export default function Cortex() {
       const agentResults: OpenAiAgentResult[] = [
         {
           agent: "DeepSeek",
-          status: deepseekText ? "completed" : "failed",
+          status: deepseekText.trim() && !deepseekError ? "completed" : "failed",
           response: deepseekText,
           ...(deepseekError ? { error: deepseekError } : {}),
         },
         {
           agent: "Gemini",
-          status: geminiText ? "completed" : "failed",
+          status: geminiText.trim() && !geminiError ? "completed" : "failed",
           response: geminiText,
           ...(geminiError ? { error: geminiError } : {}),
         },
@@ -359,15 +365,15 @@ export default function Cortex() {
         openaiError = error instanceof Error ? error.message : "Error de conexión con OpenAI.";
         setOpenai((current) => ({ ...current, loading: false, error: openaiError }));
       }
-      if (deepseekText || geminiText || openaiText) {
+      if ((deepseekText && !deepseekError) || (geminiText && !geminiError) || (openaiText && !openaiError)) {
         const saved = await fetch("/api/cortex/learning", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             question: prompt,
-            deepseek: deepseekText,
-            gemini: geminiText,
-            openai: openaiText,
+            deepseek: deepseekError ? "" : deepseekText,
+            gemini: geminiError ? "" : geminiText,
+            openai: openaiError ? "" : openaiText,
           }),
         });
         if (saved.ok) setLearningCount((count) => count + 1);

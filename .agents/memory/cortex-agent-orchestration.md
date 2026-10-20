@@ -8,3 +8,9 @@ In CORTEX MULTI-IA 4105, DeepSeek and Gemini analyze the same request in paralle
 **Why:** The user specified that OpenAI should be responsible for coordinating the other agents, not act as a third competing analyst.
 
 **How to apply:** Preserve the two-specialist-then-orchestrator sequence in CORTEX UI and API changes.
+
+Weather probes should use an explicitly labeled Texas default until the user supplies a precise location. Never describe the default as the user's location.
+
+**Why:** The user requested free Open-Meteo probing with a Texas default rather than waiting for an exact location.
+
+**How to apply:** Preserve this default-location behavior when changing weather context; distinguish weather evidence from trading or Ω measurements.

@@ -1,3 +1,12 @@
+/** Retry read-only context collection once; never use this around writes. */
+export async function retryContextRead<T>(read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch {
+    return await read();
+  }
+}
+
 const MAX_EDITOR_CODE = 12_000;
 const MAX_ACTIVITY_ITEMS = 12;
 
