@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { sql } from "drizzle-orm";
 import { AgentCircuitBreaker, AgentCircuitBlockedError, AgentSafetyViolation } from "./agent-circuit-breaker.ts";
-import { recordAgentTaskFailure, type AgentTaskStore } from "./agent-task-outcomes.ts";
+import { recordAgentTaskFailure, taskSuccessOmega, type AgentTaskStore } from "./agent-task-outcomes.ts";
 
 type ParsedSimulationBody =
   | { success: true; data: { agentId: string; vector: string; coherence: number } }
@@ -75,10 +75,12 @@ function validateSimulatedResult(task: SimulatedAgentTask, result: SimulatedAgen
 }
 
 export async function completePersistedTask(task: SimulatedAgentTask, store?: AgentTaskStore): Promise<SimulatedAgentTaskResult> {
+  // A new row records one observed success, not a schema/default Ω.
+  const initialOmega = taskSuccessOmega(1, 0)!;
   const result: SimulatedAgentTaskResult = {
     ...task,
     action: AGENT_ROLES[task.agentId]!.action(task.vector, task.coherence),
-    omega: 1,
+    omega: initialOmega,
     xp: 0,
     status: "completed",
   };
@@ -91,7 +93,7 @@ export async function completePersistedTask(task: SimulatedAgentTask, store?: Ag
       name: task.agentName,
       xp: 1,
       successfulTasks: 1,
-      lastOmega: 1,
+      lastOmega: initialOmega,
       status: "completed",
       lastFailure: null,
     })
@@ -106,7 +108,10 @@ export async function completePersistedTask(task: SimulatedAgentTask, store?: Ag
         updatedAt: new Date(),
       },
     })
-    .returning({ id: agentsTable.id, xp: agentsTable.xp, omega: agentsTable.lastOmega });
+    .returning({
+      id: agentsTable.id, xp: agentsTable.xp, omega: agentsTable.lastOmega,
+      successes: agentsTable.successfulTasks, failures: agentsTable.failedTasks,
+    });
 
   // Never substitute a shared/default score if persistence cannot confirm the
   // exact agent row and its independently calculated result.
@@ -114,7 +119,11 @@ export async function completePersistedTask(task: SimulatedAgentTask, store?: Ag
       !Number.isFinite(agent.omega) || agent.omega < 0 || agent.omega > 1) {
     throw new AgentSafetyViolation("No se pudo confirmar el Ω persistido del agente solicitado.");
   }
-  return { ...result, xp: agent.xp, omega: agent.omega };
+  const omega = taskSuccessOmega(agent.successes, agent.failures);
+  if (omega === null || omega !== agent.omega) {
+    throw new AgentSafetyViolation("El Ω persistido no coincide con los resultados propios del agente.");
+  }
+  return { ...result, xp: agent.xp, omega };
 }
 
 export function createAgentSimulationRouter({

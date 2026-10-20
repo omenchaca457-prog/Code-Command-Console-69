@@ -10,7 +10,17 @@ import { initializeAgentTelemetry } from "./agent-telemetry-initialization.ts";
 it("keeps unknown task Ω distinct from an observed failed task", () => {
   assert.equal(taskSuccessOmega(0, 0), null);
   assert.equal(taskSuccessOmega(0, 1), 0);
+  assert.equal(taskSuccessOmega(1, 0), 1);
   assert.equal(taskSuccessOmega(3, 1), 0.75);
+});
+
+it("rejects invalid task counts instead of inventing an Ω", () => {
+  for (const [successes, failures] of [
+    [-1, 1], [1, -1], [0.5, 0], [NaN, 0], [0, Infinity],
+    [Number.MAX_SAFE_INTEGER, 1],
+  ]) {
+    assert.throws(() => taskSuccessOmega(successes, failures), RangeError);
+  }
 });
 
 it("persists independent per-agent Ω for identical motor inputs and atomic concurrent updates",
@@ -66,6 +76,11 @@ it("persists independent per-agent Ω for identical motor inputs and atomic conc
       await initializeAgentTelemetry(store);
       const unknown = await client.query("SELECT last_omega FROM agents WHERE id = 'coherence'");
       assert.equal(unknown.rows[0].last_omega, null);
+      // Legacy XP and an old score of 1 must not override observed task failures.
+      await client.query("UPDATE agents SET xp = 999, failed_tasks = 2, last_omega = 1 WHERE id = 'coherence'");
+      const recovered = await completePersistedTask(task("coherence", "Coherencia 4105"), store);
+      assert.equal(recovered.xp, 1000);
+      assert.equal(recovered.omega, 1 / 3);
     } finally {
       await client.end();
     }

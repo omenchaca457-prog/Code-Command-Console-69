@@ -1,6 +1,11 @@
 import { sql } from "drizzle-orm";
 
 export function taskSuccessOmega(successes: number, failures: number): number | null {
+  if (!Number.isSafeInteger(successes) || successes < 0 ||
+      !Number.isSafeInteger(failures) || failures < 0 ||
+      !Number.isSafeInteger(successes + failures)) {
+    throw new RangeError("Ω requiere contadores de tareas enteros, seguros y no negativos.");
+  }
   const total = successes + failures;
   return total === 0 ? null : successes / total;
 }
