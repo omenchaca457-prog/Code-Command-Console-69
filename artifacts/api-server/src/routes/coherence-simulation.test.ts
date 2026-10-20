@@ -351,6 +351,95 @@ describe("coherence simulation route", () => {
     });
   });
 
+  it("returns consecutive history pages in stable createdAt/id order without omissions or duplicates", async () => {
+    const { simulator } = createTestSimulator();
+    const storedLogs = [
+      { id: 10, createdAt: new Date("2026-10-20T12:03:00.000Z") },
+      { id: 8, createdAt: new Date("2026-10-20T12:02:00.000Z") },
+      { id: 9, createdAt: new Date("2026-10-20T12:02:00.000Z") },
+      { id: 7, createdAt: new Date("2026-10-20T12:01:00.000Z") },
+      { id: 5, createdAt: new Date("2026-10-20T12:01:00.000Z") },
+      { id: 6, createdAt: new Date("2026-10-20T12:01:00.000Z") },
+      { id: 2, createdAt: new Date("2026-10-20T12:00:00.000Z") },
+    ].map((log) => ({
+      ...log,
+      vector: String(log.id),
+      coherence: 99,
+      turbulence: "1",
+      vectorsProcessed: log.id * 10,
+    }));
+    const requestedPages: Array<{ page: number; pageSize: number }> = [];
+    const router = createCoherenceSimulationRouter({
+      simulator,
+      listLogs: async (page, pageSize) => {
+        requestedPages.push({ page, pageSize });
+        const orderedLogs = [...storedLogs].sort(
+          (left, right) =>
+            right.createdAt.getTime() - left.createdAt.getTime() || right.id - left.id,
+        );
+        return {
+          items: orderedLogs.slice((page - 1) * pageSize, page * pageSize),
+          page,
+          pageSize,
+          total: storedLogs.length,
+        };
+      },
+      parseLogsQuery: async (query) => {
+        if (typeof query !== "object" || query === null) {
+          return { success: false, error: { message: "Invalid query" } };
+        }
+        const values = query as Record<string, unknown>;
+        const page = Number(values.page ?? 1);
+        const pageSize = Number(values.pageSize ?? 20);
+        if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
+          return { success: false, error: { message: "Invalid pagination" } };
+        }
+        return { success: true, data: { page, pageSize } };
+      },
+      parseLogsPage: async (page) => page,
+    });
+
+    await withServer(router, async (baseUrl) => {
+      const pages: Array<Array<{ id: number; createdAt: string }>> = [];
+      for (const page of [1, 2, 3]) {
+        const response = await fetch(`${baseUrl}/api/coherence-simulation/logs/page?page=${page}&pageSize=3`);
+        assert.equal(response.status, 200);
+        const result = await response.json() as {
+          items: Array<{ id: number; createdAt: string }>;
+          page: number;
+          pageSize: number;
+          total: number;
+        };
+        assert.equal(result.page, page);
+        assert.equal(result.pageSize, 3);
+        assert.equal(result.total, storedLogs.length);
+        pages.push(result.items);
+      }
+
+      const ids = pages.flatMap((page) => page.map((log) => log.id));
+      assert.deepEqual(ids, [10, 9, 8, 7, 6, 5, 2]);
+      assert.equal(new Set(ids).size, storedLogs.length, "No debe repetir registros entre páginas");
+      assert.deepEqual(requestedPages, [
+        { page: 1, pageSize: 3 },
+        { page: 2, pageSize: 3 },
+        { page: 3, pageSize: 3 },
+      ]);
+
+      for (const page of pages) {
+        for (let index = 1; index < page.length; index += 1) {
+          const previous = page[index - 1];
+          const current = page[index];
+          assert.ok(previous && current);
+          const dateOrder = Date.parse(previous.createdAt) - Date.parse(current.createdAt);
+          assert.ok(
+            dateOrder > 0 || (dateOrder === 0 && previous.id > current.id),
+            "Cada página debe conservar el orden descendente por fecha y luego por ID",
+          );
+        }
+      }
+    });
+  });
+
   it("serves control states and the status/sample SSE frames using isolated dependencies", async () => {
     const { clock, simulator } = createTestSimulator();
     const persisted: CoherenceSample[] = [];
