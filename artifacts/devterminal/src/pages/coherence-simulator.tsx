@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import {
   Activity,
   Cpu,
@@ -15,6 +15,11 @@ import {
 } from "@workspace/api-client-react";
 import { useNeuralContext } from "@/lib/neural-context";
 import { HistoryPagination } from "./history-pagination.tsx";
+import {
+  getHistoryPageRequest,
+  historyPaginationReducer,
+  INITIAL_HISTORY_PAGINATION_STATE,
+} from "./history-pagination-state.ts";
 
 type Sample = {
   vector: string;
@@ -45,24 +50,23 @@ async function requestControl(action: "start" | "stop"): Promise<SimulationStatu
 
 export default function CoherenceSimulator() {
   const [status, setStatus] = useState(EMPTY_STATUS);
-  const [historyPage, setHistoryPage] = useState(1);
-  const [historySnapshotId, setHistorySnapshotId] = useState<number | undefined>();
-  const [historyGeneration, setHistoryGeneration] = useState(0);
+  const [historyPagination, dispatchHistoryPagination] = useReducer(
+    historyPaginationReducer,
+    INITIAL_HISTORY_PAGINATION_STATE,
+  );
+  const { page: historyPage, snapshotId: historySnapshotId, generation: historyGeneration } = historyPagination;
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const lastAboveThreshold = useRef(false);
   const { recordEvent } = useNeuralContext();
   const recordEventRef = useRef(recordEvent);
+  const historyRequest = getHistoryPageRequest(historyPagination, HISTORY_PAGE_SIZE);
   const historyQuery = useListCoherenceSimulationLogPages(
-    { page: historyPage, pageSize: HISTORY_PAGE_SIZE, snapshotId: historySnapshotId },
+    historyRequest,
     {
       query: {
-        queryKey: [...getListCoherenceSimulationLogPagesQueryKey({
-          page: historyPage,
-          pageSize: HISTORY_PAGE_SIZE,
-          snapshotId: historySnapshotId,
-        }), historyGeneration],
+        queryKey: [...getListCoherenceSimulationLogPagesQueryKey(historyRequest), historyGeneration],
       },
     },
   );
@@ -73,16 +77,17 @@ export default function CoherenceSimulator() {
 
   useEffect(() => {
     if (historyPage === 1 && historySnapshotId === undefined && historyQuery.data?.snapshotId !== null) {
-      const nextSnapshotId = historyQuery.data?.snapshotId;
-      if (nextSnapshotId !== undefined) setHistorySnapshotId(nextSnapshotId);
+      dispatchHistoryPagination({
+        type: "accept-snapshot",
+        snapshotId: historyQuery.data?.snapshotId,
+      });
     }
   }, [historyPage, historyQuery.data?.snapshotId, historySnapshotId]);
 
   useEffect(() => {
     if (!status.running || historyPage !== 1) return;
     const refreshHistorySnapshot = window.setInterval(() => {
-      setHistorySnapshotId(undefined);
-      setHistoryGeneration((generation) => generation + 1);
+      dispatchHistoryPagination({ type: "auto-refresh" });
     }, 10_000);
     return () => window.clearInterval(refreshHistorySnapshot);
   }, [historyPage, status.running]);
@@ -262,9 +267,7 @@ export default function CoherenceSimulator() {
                 type="button"
                 data-testid="button-refresh-history"
                 onClick={() => {
-                  setHistoryPage(1);
-                  setHistorySnapshotId(undefined);
-                  setHistoryGeneration((generation) => generation + 1);
+                  dispatchHistoryPagination({ type: "refresh" });
                 }}
                 disabled={historyQuery.isFetching}
                 className="inline-flex min-h-9 items-center gap-2 border border-white/10 px-3 font-mono text-[9px] uppercase tracking-wider text-[#9eabb5] transition hover:border-[#00f0ff]/40 hover:text-[#00f0ff] disabled:opacity-50"
@@ -321,10 +324,11 @@ export default function CoherenceSimulator() {
             pageCount={historyPages}
             isFetching={historyQuery.isFetching}
             onPageChange={(page) => {
-              if (historySnapshotId === undefined && history?.snapshotId != null) {
-                setHistorySnapshotId(history.snapshotId);
-              }
-              setHistoryPage(page);
+              dispatchHistoryPagination({
+                type: "navigate",
+                page,
+                snapshotId: history?.snapshotId ?? undefined,
+              });
             }}
           />
         </section>
