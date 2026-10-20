@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isValidElement, type ReactElement, type ReactNode } from "react";
+import { createElement, isValidElement, type ReactElement, type ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { HistoryPagination } from "./history-pagination.tsx";
+import { HistoryRefreshButton, HistoryRequestFeedback } from "./history-request-feedback.tsx";
 import {
   getHistoryPageRequest,
   historyPaginationReducer,
@@ -68,6 +71,116 @@ describe("history pagination controls", () => {
   it("disables both controls while a page request is in progress", () => {
     const buttons = renderButtons(2, 3, () => undefined, true);
     assert.deepEqual(buttons.map((button) => button.props.disabled), [true, true]);
+  });
+});
+
+describe("history request recovery", () => {
+  // Exercise request failure/recovery without depending on snapshot boundaries.
+  for (const hasSavedRows of [false, true]) {
+    it(`shows a settled error and recovers on retry ${hasSavedRows ? "with cached rows" : "without cached rows"}`, { timeout: 5000 }, async () => {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+      });
+      let pagination = INITIAL_HISTORY_PAGINATION_STATE;
+      let attempts = 0;
+      let resolveRetry!: (rows: SavedLog[]) => void;
+      const retryResponse = new Promise<SavedLog[]>((resolve) => {
+        resolveRetry = resolve;
+      });
+      const options = () => ({
+        queryKey: ["history-recovery", pagination.generation],
+        queryFn: async () => {
+          attempts += 1;
+          if (attempts === 1) throw new Error("HTTP 503");
+          return retryResponse;
+        },
+      });
+      if (hasSavedRows) {
+        client.setQueryData(options().queryKey, [{ id: 1 }]);
+      }
+      const observer = new QueryObserver(client, options());
+      const unsubscribe = observer.subscribe(() => undefined);
+
+      const renderFeedback = () => {
+        const result = observer.getCurrentResult();
+        return renderToStaticMarkup(createElement(
+          HistoryRequestFeedback,
+          { ...result, itemCount: result.data?.length },
+          result.data?.map(({ id }) => createElement(
+            "div", { key: id, "data-testid": `row-simulation-log-${id}` }, `Registro ${id}`,
+          )),
+        ));
+      };
+      const refreshButton = () => {
+        const result = observer.getCurrentResult();
+        const buttons = findButtons(HistoryRefreshButton({
+          ...result,
+          onRefresh: () => {
+            pagination = historyPaginationReducer(pagination, { type: "refresh" });
+            observer.setOptions(options());
+          },
+        }));
+        assert.equal(buttons.length, 1);
+        return buttons[0]!;
+      };
+
+      try {
+        await observer.refetch({ cancelRefetch: false });
+        assert.equal(attempts, 1);
+        const failure = renderFeedback();
+        assert.match(failure, /role="alert"/);
+        assert.match(failure, /No se pudo cargar el historial/);
+        assert.match(failure, /Pulsa Reintentar/);
+        assert.doesNotMatch(failure, /status-history-empty|status-history-loading/);
+        if (hasSavedRows) {
+          assert.match(failure, /pueden estar desactualizados/);
+          assert.match(failure, /row-simulation-log-1/);
+        } else {
+          assert.match(failure, /No se pudo confirmar si hay registros guardados/);
+          assert.doesNotMatch(failure, /row-simulation-log-/);
+        }
+        const retry = refreshButton();
+        assert.equal(retry.props.disabled, false, "Retry becomes available after failure settles");
+        assert.match(renderToStaticMarkup(retry), /Reintentar/);
+        retry.props.onClick();
+        assert.equal(attempts, 2, "The retry control issues a new request");
+        assert.equal(refreshButton().props.disabled, true);
+        assert.match(renderFeedback(), /status-history-loading/);
+        assert.doesNotMatch(renderFeedback(), /status-history-empty/);
+
+        resolveRetry([{ id: 2 }]);
+        await observer.refetch({ cancelRefetch: false });
+        const success = renderFeedback();
+        assert.match(success, /row-simulation-log-2/);
+        assert.doesNotMatch(success, /status-history-error|status-history-loading|status-history-empty|row-simulation-log-1/);
+        assert.equal(refreshButton().props.disabled, false);
+        assert.match(renderToStaticMarkup(refreshButton()), /Actualizar/);
+      } finally {
+        unsubscribe();
+        observer.destroy();
+        client.clear();
+      }
+    });
+  }
+
+  it("keeps retry disabled during a failed background request and distinguishes an empty success", () => {
+    const pendingButton = HistoryRefreshButton({
+      isError: true,
+      isFetching: true,
+      onRefresh: () => undefined,
+    });
+    assert.equal(findButtons(pendingButton)[0]?.props.disabled, true);
+    const pending = renderToStaticMarkup(createElement(HistoryRequestFeedback, {
+      isError: true, isFetching: true, isLoading: false, itemCount: 0,
+    }));
+    assert.match(pending, /status-history-error/);
+    assert.match(pending, /status-history-loading/);
+    assert.doesNotMatch(pending, /status-history-empty/);
+    const empty = renderToStaticMarkup(createElement(HistoryRequestFeedback, {
+      isError: false, isFetching: false, isLoading: false, itemCount: 0,
+    }));
+    assert.match(empty, /Todavía no hay muestras guardadas/);
+    assert.doesNotMatch(empty, /status-history-error|status-history-loading/);
   });
 });
 

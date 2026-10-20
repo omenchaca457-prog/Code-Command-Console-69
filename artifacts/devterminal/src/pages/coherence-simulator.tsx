@@ -5,7 +5,6 @@ import {
   Gauge,
   History,
   Radio,
-  RefreshCw,
   Square,
   Triangle,
 } from "lucide-react";
@@ -15,6 +14,7 @@ import {
 } from "@workspace/api-client-react";
 import { useNeuralContext } from "@/lib/neural-context";
 import { HistoryPagination } from "./history-pagination.tsx";
+import { HistoryRefreshButton, HistoryRequestFeedback } from "./history-request-feedback.tsx";
 import {
   getHistoryPageRequest,
   historyPaginationReducer,
@@ -261,37 +261,24 @@ export default function CoherenceSimulator() {
             </div>
             <div className="flex items-center gap-3">
               <span className="font-mono text-[10px] uppercase tracking-[.12em] text-[#75818d]" data-testid="text-history-total">
-                {history?.total ?? 0} REGISTROS
+                {history ? `${history.total} REGISTROS` : "TOTAL NO DISPONIBLE"}
               </span>
-              <button
-                type="button"
-                data-testid="button-refresh-history"
-                onClick={() => {
+              <HistoryRefreshButton
+                isError={historyQuery.isError}
+                isFetching={historyQuery.isFetching}
+                onRefresh={() => {
                   dispatchHistoryPagination({ type: "refresh" });
                 }}
-                disabled={historyQuery.isFetching}
-                className="inline-flex min-h-9 items-center gap-2 border border-white/10 px-3 font-mono text-[9px] uppercase tracking-wider text-[#9eabb5] transition hover:border-[#00f0ff]/40 hover:text-[#00f0ff] disabled:opacity-50"
-              >
-                <RefreshCw className={`h-3 w-3 ${historyQuery.isFetching ? "animate-spin" : ""}`} aria-hidden /> Actualizar
-              </button>
+              />
             </div>
           </div>
 
-          {historyQuery.isError && (
-            <p role="alert" data-testid="status-history-error" className="px-5 py-4 text-sm text-[#ff9ba9]">
-              No se pudo cargar el historial. Vuelve a intentarlo más tarde.
-            </p>
-          )}
-          {historyQuery.isLoading && (
-            <p role="status" data-testid="status-history-loading" className="px-5 py-8 text-center font-mono text-xs text-[#84909b]">
-              Consultando registros…
-            </p>
-          )}
-          {!historyQuery.isLoading && !historyQuery.isError && history?.items.length === 0 && (
-            <p data-testid="status-history-empty" className="px-5 py-8 text-center text-sm text-[#84909b]">
-              Todavía no hay muestras guardadas.
-            </p>
-          )}
+          <HistoryRequestFeedback
+            isError={historyQuery.isError}
+            isFetching={historyQuery.isFetching}
+            isLoading={historyQuery.isLoading}
+            itemCount={history?.items.length}
+          >
           {!!history?.items.length && (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-white/[.07] text-left">
@@ -318,6 +305,7 @@ export default function CoherenceSimulator() {
               </table>
             </div>
           )}
+          </HistoryRequestFeedback>
 
           <HistoryPagination
             page={historyPage}
