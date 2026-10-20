@@ -6,6 +6,7 @@ import {
   buildAgentSystemPrompt,
   classifyAgentAnalysis,
   citesSourceEvidence,
+  evaluateAgentResponse,
   hasAgentEvidence,
   parseOmega,
 } from "./agent-evaluation.ts";
@@ -41,11 +42,27 @@ describe("agent swarm evaluation", () => {
     assert.equal(parseOmega("sin índice"), null);
   });
 
-  it("rewards only evidence-backed analysis above 0.85", () => {
+  it("rewards only evidence-backed analysis above 0.85 and reserves failures for Ω below 0.3", () => {
     assert.equal(classifyAgentAnalysis(0.9, true), "rewarded");
     assert.equal(classifyAgentAnalysis(0.7, true), "review");
-    assert.equal(classifyAgentAnalysis(0.4, true), "failed");
-    assert.equal(classifyAgentAnalysis(0.99, false), "failed");
+    assert.equal(classifyAgentAnalysis(0.4, true), "review");
+    assert.equal(classifyAgentAnalysis(0.29, true), "failed");
+    assert.equal(classifyAgentAnalysis(null, true), "failed");
+    assert.equal(classifyAgentAnalysis(0.99, false), "review");
+    assert.equal(classifyAgentAnalysis(null, false), "review");
+  });
+
+  it("keeps Ω unknown and does not count missing code as a failed analysis", () => {
+    assert.deepEqual(
+      evaluateAgentResponse("Ω: 0.99", "(no hay código en el workspace)"),
+      { omega: null, analysisStatus: "review", failureReason: null },
+    );
+  });
+
+  it("moves evidence-backed low scores into review unless Ω is below 0.3", () => {
+    const code = "export function calculateTotal(items) {\n  return items.length;\n}";
+    assert.equal(evaluateAgentResponse("Ω: 0.4", code).analysisStatus, "review");
+    assert.equal(evaluateAgentResponse("Ω: 0.2", code).analysisStatus, "failed");
   });
 
   it("rejects empty and placeholder code context", () => {

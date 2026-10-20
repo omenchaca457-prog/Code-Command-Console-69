@@ -8,10 +8,7 @@ import { persistAgentResponse } from "./agent-message-persistence";
 import {
   buildAgentEvidenceMetrics,
   buildAgentSystemPrompt,
-  classifyAgentAnalysis,
-  citesSourceEvidence,
-  hasAgentEvidence,
-  parseOmega,
+  evaluateAgentResponse,
 } from "./agent-evaluation";
 import { AgentCircuitBreaker } from "./agent-circuit-breaker";
 import { publishNeuralEvent } from "./neural-event-bus";
@@ -24,29 +21,6 @@ import {
 const router = Router();
 const agentCircuitBreaker = new AgentCircuitBreaker();
 const AGENT_PROVIDER_TIMEOUT_MS = 5_000;
-
-function evaluateAgentResponse(aiResponse: string, context: string | null | undefined) {
-  const parsedOmega = parseOmega(aiResponse);
-  const hasEvidence = hasAgentEvidence(context);
-  const citedSource = citesSourceEvidence(aiResponse, context);
-  const claimedOmega = parsedOmega ?? 0.49;
-  const omega = !hasEvidence
-    ? 0.05
-    : Math.max(0.01, citedSource ? claimedOmega : Math.min(claimedOmega, 0.85));
-  const analysisStatus = classifyAgentAnalysis(omega, hasEvidence);
-  const failureReason =
-    analysisStatus === "failed"
-      ? !hasEvidence
-        ? "No se proporcionó código ni métricas verificables."
-        : parsedOmega === null
-          ? "El agente no devolvió un índice Ω válido."
-          : !citedSource
-            ? "El agente no citó una línea verificable del código proporcionado."
-          : `Índice Ω bajo (${parsedOmega.toFixed(2)}).`
-      : null;
-
-  return { omega, analysisStatus, failureReason };
-}
 
 router.use(createAiCodeChatRouter({
   parseBody: (body) => AiChatBody.safeParse(body),

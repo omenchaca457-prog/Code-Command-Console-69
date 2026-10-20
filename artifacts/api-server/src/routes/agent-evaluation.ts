@@ -28,7 +28,8 @@ export function classifyAgentAnalysis(
   omega: number | null,
   hasEvidence: boolean,
 ): AgentAnalysisStatus {
-  if (!hasEvidence || omega === null || omega < 0.5) return "failed";
+  if (!hasEvidence) return "review";
+  if (omega === null || omega < 0.3) return "failed";
   if (omega > 0.85) return "rewarded";
   return "review";
 }
@@ -67,4 +68,28 @@ export function citesSourceEvidence(
     .map((line) => line.trim())
     .filter((line) => line.length >= 16);
   return sourceLines.some((line) => response.includes(line));
+}
+
+export function evaluateAgentResponse(
+  aiResponse: string,
+  context: string | null | undefined,
+) {
+  const parsedOmega = parseOmega(aiResponse);
+  const hasEvidence = hasAgentEvidence(context);
+  const citedSource = citesSourceEvidence(aiResponse, context);
+  const claimedOmega = parsedOmega ?? 0.49;
+  const omega = !hasEvidence
+    ? null
+    : Math.max(0.01, citedSource ? claimedOmega : Math.min(claimedOmega, 0.85));
+  const analysisStatus = classifyAgentAnalysis(omega, hasEvidence);
+  const failureReason =
+    analysisStatus === "failed"
+      ? parsedOmega === null
+        ? "El agente no devolvió un índice Ω válido."
+        : !citedSource
+          ? "El agente no citó una línea verificable del código proporcionado."
+          : `Índice Ω bajo (${parsedOmega.toFixed(2)}).`
+      : null;
+
+  return { omega, analysisStatus, failureReason };
 }
