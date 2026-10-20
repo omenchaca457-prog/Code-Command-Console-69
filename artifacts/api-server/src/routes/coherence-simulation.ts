@@ -44,6 +44,9 @@ type LogsQueryParseResult =
   | { success: true; data: { page: number; pageSize: number; snapshotId?: number } }
   | { success: false; error: { message: string } };
 
+type SimulationLogsDatabase = typeof import("@workspace/db").db;
+type SimulationLogsTable = typeof import("@workspace/db").simulationLogsTable;
+
 const MAX_SIMULATION_LOG_OFFSET = 1_000_000;
 
 function hasSafePageOffset(page: number, pageSize: number): boolean {
@@ -89,14 +92,15 @@ async function loadSimulationLogs(limit: number, beforeId?: number): Promise<Sim
   };
 }
 
-async function listSimulationLogPages(
+export async function listSimulationLogPagesFromDatabase(
+  database: SimulationLogsDatabase,
+  simulationLogsTable: SimulationLogsTable,
   page: number,
   pageSize: number,
   requestedSnapshotId?: number,
 ): Promise<SimulationLogOffsetPage> {
-  const { db, simulationLogsTable } = await import("@workspace/db");
   const snapshotId = requestedSnapshotId ?? (
-    await db
+    await database
       .select({ id: simulationLogsTable.id })
       .from(simulationLogsTable)
       .orderBy(desc(simulationLogsTable.id))
@@ -104,14 +108,14 @@ async function listSimulationLogPages(
   )[0]?.id ?? null;
   const snapshotFilter = snapshotId === null ? undefined : lte(simulationLogsTable.id, snapshotId);
   const [items, totals] = await Promise.all([
-    db
+    database
       .select()
       .from(simulationLogsTable)
       .where(snapshotFilter)
       .orderBy(desc(simulationLogsTable.createdAt), desc(simulationLogsTable.id))
       .limit(pageSize)
       .offset((page - 1) * pageSize),
-    db.select({ total: count() }).from(simulationLogsTable).where(snapshotFilter),
+    database.select({ total: count() }).from(simulationLogsTable).where(snapshotFilter),
   ]);
 
   return {
@@ -121,6 +125,15 @@ async function listSimulationLogPages(
     total: totals[0]?.total ?? 0,
     snapshotId,
   };
+}
+
+async function listSimulationLogPages(
+  page: number,
+  pageSize: number,
+  requestedSnapshotId?: number,
+): Promise<SimulationLogOffsetPage> {
+  const { db, simulationLogsTable } = await import("@workspace/db");
+  return listSimulationLogPagesFromDatabase(db, simulationLogsTable, page, pageSize, requestedSnapshotId);
 }
 
 async function parseSimulationLogsQuery(query: unknown): Promise<LogsQueryParseResult> {
