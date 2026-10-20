@@ -3,7 +3,7 @@ import { neuralEventHub } from "./neural-event-hub.ts";
 
 export type StreamedNeuralEvent = {
   id: number;
-  origin: "terminal" | "runner" | "agents" | "creator";
+  origin: "terminal" | "runner" | "agents" | "creator" | "motor";
   eventType: string;
   content: string;
   createdAt: string;

@@ -12,7 +12,6 @@ import {
   getListCoherenceSimulationLogPagesQueryKey,
   useListCoherenceSimulationLogPages,
 } from "@workspace/api-client-react";
-import { useNeuralContext } from "@/lib/neural-context";
 import { HistoryPagination } from "./history-pagination.tsx";
 import { HistoryRefreshButton, HistoryRequestFeedback } from "./history-request-feedback.tsx";
 import {
@@ -59,8 +58,6 @@ export default function CoherenceSimulator() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const lastAboveThreshold = useRef(false);
-  const { recordEvent } = useNeuralContext();
-  const recordEventRef = useRef(recordEvent);
   const historyRequest = getHistoryPageRequest(historyPagination, HISTORY_PAGE_SIZE);
   const historyQuery = useListCoherenceSimulationLogPages(
     historyRequest,
@@ -71,9 +68,6 @@ export default function CoherenceSimulator() {
     },
   );
 
-  useEffect(() => {
-    recordEventRef.current = recordEvent;
-  }, [recordEvent]);
 
   useEffect(() => {
     if (historyPage === 1 && historySnapshotId === undefined && historyQuery.data?.snapshotId !== null) {
@@ -124,13 +118,7 @@ export default function CoherenceSimulator() {
       setStatus((current) => ({ ...current, running: true, vectorsProcessed: sample.vectorsProcessed, latest: sample }));
 
       const isAboveThreshold = sample.coherence > 95;
-      if (isAboveThreshold && !lastAboveThreshold.current) {
-        recordEventRef.current({
-          origin: "motor",
-          eventType: "high_coherence",
-          content: `ALTA COHERENCIA: ${sample.coherence.toFixed(4)}% · vector ${sample.vectorsProcessed}`,
-        });
-      }
+      // high_coherence is persisted and broadcast by the server, not this tab.
       lastAboveThreshold.current = isAboveThreshold;
     });
 

@@ -13,6 +13,7 @@ import {
 import { AgentCircuitBlockedError, AgentTaskValidationError } from "./agent-circuit-breaker";
 import { agentSwarmCircuit } from "./agent-swarm-circuit";
 import { validateAgentOutput } from "./agent-safety-validation";
+import { recordAgentTaskFailure } from "./agent-task-outcomes";
 import {
   AI_CODE_TOOLS,
   createAiCodeChatRouter,
@@ -78,7 +79,9 @@ router.get("/agents", async (_req, res) => {
       name: agentsTable.name,
       xp: agentsTable.xp,
       failedAnalyses: agentsTable.failedAnalyses,
-      omega: agentsTable.lastOmega,
+      omega: sql<number | null>`CASE WHEN ${agentsTable.successfulTasks} + ${agentsTable.failedTasks} > 0
+        THEN ${agentsTable.successfulTasks}::double precision / (${agentsTable.successfulTasks} + ${agentsTable.failedTasks})
+        ELSE NULL END`,
       status: agentsTable.status,
       lastFailure: agentsTable.lastFailure,
     })
@@ -126,18 +129,18 @@ router.post("/ai/chat", async (req, res) => {
 
     if (savedMessage) {
       const [agent] = await db
-        .select({ xp: agentsTable.xp })
+        .select({ xp: agentsTable.xp, omega: agentsTable.lastOmega })
         .from(agentsTable)
         .where(eq(agentsTable.id, agentId))
         .limit(1);
-      const { omega, analysisStatus } = evaluateAgentResponse(
+      const { analysisStatus } = evaluateAgentResponse(
         savedMessage.content,
         context,
       );
       res.json({
         response: savedMessage.content,
         conversationId: savedMessage.conversationId,
-        omega,
+        omega: agent?.omega ?? null,
         xp: agent?.xp ?? 0,
         analysisStatus,
       });
@@ -235,7 +238,7 @@ router.post("/ai/chat", async (req, res) => {
       return {
         response: saved.message.content,
         conversationId: saved.message.conversationId,
-        omega: finalAnalysis.omega,
+        omega: saved.omega,
         xp: saved.xp,
         analysisStatus: finalAnalysis.analysisStatus,
         status: finalAnalysis.analysisStatus === "failed" ? "failed" : "completed",
@@ -251,13 +254,7 @@ router.post("/ai/chat", async (req, res) => {
       : circuit.lastFailure ?? "La ejecución del agente no superó la validación.";
     req.log.warn({ agentId, circuit, blocked }, "Agent Swarm: tarea detenida");
     if (!blocked) {
-      await db.update(agentsTable).set({
-        status: circuit.state === "OPEN" ? "standby" : "failed",
-        failedAnalyses: sql`${agentsTable.failedAnalyses} + 1`,
-        lastFailure: failure,
-        lastOmega: null,
-        updatedAt: new Date(),
-      }).where(eq(agentsTable.id, agentId));
+      await recordAgentTaskFailure(agentId, failure, circuit.state === "OPEN");
     }
     if (blocked && circuit.remainingMs > 0) {
       res.setHeader("Retry-After", Math.ceil(circuit.remainingMs / 1000));

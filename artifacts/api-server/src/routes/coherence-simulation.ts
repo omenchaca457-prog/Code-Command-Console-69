@@ -65,7 +65,7 @@ const defaultSimulator: CoherenceSimulator = {
   subscribeToSimulation,
 };
 
-async function persistSimulationSample(sample: CoherenceSample): Promise<void> {
+export async function persistSimulationSample(sample: CoherenceSample): Promise<void> {
   const { db, simulationLogsTable } = await import("@workspace/db");
   await db.insert(simulationLogsTable).values({
     vector: sample.vector,
@@ -227,6 +227,7 @@ export function createCoherenceSimulationRouter({
     res.write(`event: status\ndata: ${JSON.stringify(simulator.getSimulationStatus())}\n\n`);
 
     const unsubscribe = simulator.subscribeToSimulation((sample) => {
+      if (res.writableEnded || res.destroyed || res.writableLength > 64 * 1024) return;
       res.write(`event: sample\ndata: ${JSON.stringify(sample)}\n\n`);
     });
     const heartbeat = setInterval(() => res.write(": keep-alive\n\n"), 20_000);

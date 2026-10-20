@@ -11,6 +11,8 @@ export const agentsTable = pgTable("agents", {
   name: text("name").notNull(),
   xp: integer("xp").notNull().default(0),
   failedAnalyses: integer("failed_analyses").notNull().default(0),
+  successfulTasks: integer("successful_tasks").notNull().default(0),
+  failedTasks: integer("failed_tasks").notNull().default(0),
   lastOmega: doublePrecision("last_omega"),
   lastFailure: text("last_failure"),
   status: text("status").notNull().default("idle"),

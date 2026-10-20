@@ -1,4 +1,4 @@
-import { retryContextRead } from "./cortex-context.ts";
+import { boundedContextRead } from "./deepseek-context-read.ts";
 import OpenAI from "openai";
 import { Router, type Request, type Response } from "express";
 import {
@@ -163,6 +163,8 @@ type DeepseekParseResult =
   | { success: false };
 
 type DeepseekDependencies = {
+  contextTimeoutMs: number;
+  requestTimeoutMs: number;
   getApiKey: () => string | undefined;
   createClient: (apiKey: string) => DeepseekClient;
   parseBody: (body: unknown) => Promise<DeepseekParseResult>;
@@ -176,6 +178,8 @@ type DeepseekDependencies = {
 };
 
 const defaultDependencies: DeepseekDependencies = {
+  contextTimeoutMs: 2000,
+  requestTimeoutMs: 90_000,
   getApiKey: () => process.env.OPENAI_API_KEY,
   createClient: (apiKey) =>
     new OpenAI({
@@ -254,6 +258,22 @@ const handleDeepseekChat = async (
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
+  res.write(": connected; preparing context\n\n");
+  const heartbeat = setInterval(() => {
+    if (!res.writableEnded && !res.destroyed) res.write(": keep-alive\n\n");
+  }, 1000);
+  const requestTimeout = setTimeout(() => {
+    if (!res.writableEnded && !res.destroyed) {
+      res.write(`data: ${JSON.stringify({ error: "DeepSeek superó el tiempo máximo de respuesta." })}\n\n`);
+      res.end();
+    }
+    controller.abort();
+  }, dependencies.requestTimeoutMs);
+  const clearStreamTimers = () => {
+    clearInterval(heartbeat);
+    clearTimeout(requestTimeout);
+  };
+  res.once("close", clearStreamTimers);
 
   try {
     if (mockEnabled && mockScenario) {
@@ -262,22 +282,17 @@ const handleDeepseekChat = async (
     }
     if (!apiKey) throw new Error("Falta configurar OPENAI_API_KEY.");
 
-    let dbContext = "";
-    try {
-      dbContext = await dependencies.loadHistory();
-    } catch (dbError) {
-      req.log.error({ err: dbError }, "Error leyendo la DB");
-      dbContext = "Error al conectar con la base de datos.";
-    }
-
     const deepseek = dependencies.createClient(apiKey);
-    const [workspace, diagnostics, library, integrations, neural] = await retryContextRead(() => Promise.all([
-      dependencies.executeTool("get_workspace_snapshot", "{}"),
-      dependencies.executeTool("get_runtime_diagnostics", "{}"),
-      dependencies.executeTool("get_library_snapshot", "{}"),
-      dependencies.executeTool("get_integrations_status", "{}"),
-      dependencies.executeTool("get_neural_activity", "{}"),
-    ]));
+    const reads = [
+      ["history", () => dependencies.loadHistory()],
+      ...["get_workspace_snapshot", "get_runtime_diagnostics", "get_library_snapshot",
+        "get_integrations_status", "get_neural_activity"].map(name =>
+        [name, () => dependencies.executeTool(name, "{}")] as const),
+    ] as const;
+    const [dbContext, workspace, diagnostics, library, integrations, neural] = await Promise.all(
+      reads.map(([label, read]) => boundedContextRead(read, dependencies.contextTimeoutMs, label)),
+    );
+    if (controller.signal.aborted) return;
     const systemContext = [
       context ?? "",
       "[ESTADO REAL DEL SISTEMA]",
@@ -432,6 +447,7 @@ const handleDeepseekChat = async (
       res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
     }
   } finally {
+    clearStreamTimers();
     if (!res.writableEnded) res.end();
   }
 };

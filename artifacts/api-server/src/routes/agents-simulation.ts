@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { AgentCircuitBreaker, AgentCircuitBlockedError, AgentSafetyViolation } from "./agent-circuit-breaker.ts";
+import { recordAgentTaskFailure, type AgentTaskStore } from "./agent-task-outcomes.ts";
 
 type ParsedSimulationBody =
   | { success: true; data: { agentId: string; vector: string; coherence: number } }
@@ -67,30 +68,30 @@ export type AgentSimulationDependencies = {
 function validateSimulatedResult(task: SimulatedAgentTask, result: SimulatedAgentTaskResult) {
   if (result.agentId !== task.agentId || result.agentName !== task.agentName ||
       result.vector !== task.vector || result.coherence !== task.coherence ||
-      result.omega !== task.coherence / 100 || !result.action.trim() ||
+      !Number.isFinite(result.omega) || result.omega < 0 || result.omega > 1 || !result.action.trim() ||
       result.status !== "completed" || !Number.isSafeInteger(result.xp) || result.xp < 0) {
     throw new AgentSafetyViolation("Deriva de los parámetros verificables de la tarea sintética.");
   }
 }
 
-async function completePersistedTask(task: SimulatedAgentTask): Promise<SimulatedAgentTaskResult> {
-  const omega = Math.min(1, Math.max(0, task.coherence / 100));
+export async function completePersistedTask(task: SimulatedAgentTask, store?: AgentTaskStore): Promise<SimulatedAgentTaskResult> {
   const result: SimulatedAgentTaskResult = {
     ...task,
     action: AGENT_ROLES[task.agentId]!.action(task.vector, task.coherence),
-    omega,
+    omega: 1,
     xp: 0,
     status: "completed",
   };
   validateSimulatedResult(task, result);
-  const { agentsTable, db } = await import("@workspace/db");
+  const { agentsTable, db } = store ?? await import("@workspace/db");
   const [agent] = await db
     .insert(agentsTable)
     .values({
       id: task.agentId,
       name: task.agentName,
       xp: 1,
-      lastOmega: omega,
+      successfulTasks: 1,
+      lastOmega: 1,
       status: "completed",
       lastFailure: null,
     })
@@ -98,15 +99,16 @@ async function completePersistedTask(task: SimulatedAgentTask): Promise<Simulate
       target: agentsTable.id,
       set: {
         xp: sql`${agentsTable.xp} + 1`,
-        lastOmega: omega,
+        successfulTasks: sql`${agentsTable.successfulTasks} + 1`,
+        lastOmega: sql`(${agentsTable.successfulTasks} + 1)::double precision / (${agentsTable.successfulTasks} + ${agentsTable.failedTasks} + 1)`,
         status: "completed",
         lastFailure: null,
         updatedAt: new Date(),
       },
     })
-    .returning({ xp: agentsTable.xp });
+    .returning({ xp: agentsTable.xp, omega: agentsTable.lastOmega });
 
-  return { ...result, xp: agent?.xp ?? 0 };
+  return { ...result, xp: agent?.xp ?? 0, omega: agent?.omega ?? 1 };
 }
 
 export function createAgentSimulationRouter({
@@ -116,16 +118,7 @@ export function createAgentSimulationRouter({
     return RunSimulatedAgentAnalysisBody.safeParse(body);
   },
   circuit,
-  onFailure = async (agentId, reason, open) => {
-    const { db, agentsTable } = await import("@workspace/db");
-    await db.update(agentsTable).set({
-      status: open ? "standby" : "failed",
-      lastOmega: null,
-      lastFailure: reason,
-      failedAnalyses: sql`${agentsTable.failedAnalyses} + 1`,
-      updatedAt: new Date(),
-    }).where(eq(agentsTable.id, agentId));
-  },
+  onFailure = recordAgentTaskFailure,
 }: AgentSimulationDependencies = {}) {
   const router = Router();
 

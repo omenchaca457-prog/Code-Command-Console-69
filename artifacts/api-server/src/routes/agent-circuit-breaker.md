@@ -34,7 +34,9 @@ Se validan las respuestas antes de almacenar el resultado del modelo:
 contenido no vacío, terminación completa, payload JSON coincidente con las
 métricas del servidor, cita del código y Ω válido cuando hay evidencia.
 Modificar parámetros verificables abre el circuito inmediatamente.
-Las tareas sintéticas validan identidad, vector, coherencia y Ω derivado.
+Las tareas sintéticas validan identidad, vector y coherencia del payload.
+Su Ω operativo proviene exclusivamente del historial de tareas del agente,
+no de la coherencia del motor.
 El circuito cubre también excepciones y errores de persistencia.
 
 Las transiciones generan registros estructurados con agente, estado anterior,

@@ -92,6 +92,51 @@ function parseTestBody(body: unknown) {
 }
 
 describe("SQ-AI simulated streaming route", () => {
+  it("sends SSE immediately, bounds stalled context and delivers a token before completion", async () => {
+    let releaseFinal!: () => void;
+    const finalGate = new Promise<void>(resolve => { releaseFinal = resolve; });
+    const router = createDeepseekRouter({
+      getApiKey: () => "test-key",
+      parseBody: async body => parseTestBody(body),
+      contextTimeoutMs: 20,
+      loadHistory: async () => new Promise<string>(() => {}),
+      executeTool: async () => new Promise<string>(() => {}),
+      createClient: () => ({ chat: { completions: { create: async () => (async function* () {
+        yield makeChunk({ content: "Primer token" });
+        await finalGate;
+        yield makeChunk({ content: " final" });
+      })() } } }),
+    });
+    await withServer(router, async baseUrl => {
+      const response = await fetch(`${baseUrl}/deepseek/chat`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "Prueba" }),
+      });
+      assert.match(response.headers.get("content-type") ?? "", /text\/event-stream/);
+      assert.ok(response.body);
+      const reader = response.body.getReader();
+      let text = "";
+      const decoder = new TextDecoder();
+      try {
+        const deadline = AbortSignal.timeout(2000);
+        while (!text.includes("Primer token")) {
+          const read = reader.read();
+          const chunk = await Promise.race([
+            read,
+            new Promise<never>((_, reject) => deadline.addEventListener("abort", () => reject(new Error("No first token")), { once: true })),
+          ]);
+          assert.equal(chunk.done, false);
+          text += decoder.decode(chunk.value);
+        }
+        assert.ok(text.includes(": connected"));
+        assert.ok(!text.includes('" final"'));
+      } finally {
+        releaseFinal();
+        await reader.cancel();
+      }
+    });
+  });
+
   it("retries an empty completion once with an 8192 token budget", async () => {
     let calls = 0;
     const router = createDeepseekRouter({

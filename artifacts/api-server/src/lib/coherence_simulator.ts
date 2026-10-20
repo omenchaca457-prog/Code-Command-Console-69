@@ -74,28 +74,36 @@ export function createCoherenceSimulator(
     persistLog = saveLog;
     lastPersistedAt = now();
     interval = schedule(() => {
-      vectorsProcessed += 1;
-      const sample = makeSample();
-      latest = sample;
+      try {
+        const sample = makeSample();
+        vectorsProcessed += 1;
+        sample.vectorsProcessed = vectorsProcessed;
+        latest = sample;
 
-      for (const listener of listeners) {
-        try {
-          listener(sample);
-        } catch (error) {
-          logger.warn({ err: error }, "Simulation subscriber failed");
+        for (const listener of listeners) {
+          try {
+            listener(sample);
+          } catch (error) {
+            logger.warn({ err: error }, "Simulation subscriber failed");
+          }
         }
-      }
 
-      if (now() - lastPersistedAt >= SIMULATION_LOG_INTERVAL_MS && !persisting && persistLog) {
-        lastPersistedAt = now();
-        persisting = true;
-        void persistLog(sample)
-          .catch((error: unknown) => {
-            logger.error({ err: error }, "Could not persist coherence simulation log");
-          })
-          .finally(() => {
+        if (now() - lastPersistedAt >= SIMULATION_LOG_INTERVAL_MS && !persisting && persistLog) {
+          lastPersistedAt = now();
+          persisting = true;
+          try {
+            void persistLog(sample)
+              .catch((error: unknown) => {
+                logger.error({ err: error }, "Could not persist coherence simulation log");
+              })
+              .finally(() => { persisting = false; });
+          } catch (error) {
             persisting = false;
-          });
+            throw error;
+          }
+        }
+      } catch (error) {
+        logger.error({ err: error }, "Motor 5.5: fallo del ciclo; se reintentará en el siguiente tick");
       }
     }, SIMULATION_INTERVAL_MS);
 

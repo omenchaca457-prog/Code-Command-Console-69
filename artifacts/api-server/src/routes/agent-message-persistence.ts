@@ -40,7 +40,7 @@ export async function persistAgentResponse(
       }
 
       const [agent] = await tx
-        .select({ xp: agentsTable.xp })
+        .select({ xp: agentsTable.xp, omega: agentsTable.lastOmega })
         .from(agentsTable)
         .where(eq(agentsTable.id, input.agentId))
         .limit(1);
@@ -49,6 +49,7 @@ export async function persistAgentResponse(
         message: existingMessage,
         inserted: false,
         xp: agent?.xp ?? 0,
+        omega: agent?.omega ?? null,
       };
     }
 
@@ -59,7 +60,9 @@ export async function persistAgentResponse(
         name: input.agentName,
         xp: input.analysisStatus === "rewarded" ? 1 : 0,
         failedAnalyses: input.analysisStatus === "failed" ? 1 : 0,
-        lastOmega: input.omega,
+        successfulTasks: input.omega !== null && input.analysisStatus !== "failed" ? 1 : 0,
+        failedTasks: input.analysisStatus === "failed" ? 1 : 0,
+        lastOmega: input.omega === null ? null : input.analysisStatus === "failed" ? 0 : 1,
         lastFailure: input.failureReason,
         status: input.analysisStatus === "failed" ? "failed" : "completed",
       })
@@ -75,14 +78,24 @@ export async function persistAgentResponse(
             input.analysisStatus === "failed"
               ? sql`${agentsTable.failedAnalyses} + 1`
               : sql`${agentsTable.failedAnalyses}`,
-          lastOmega: input.omega,
+          successfulTasks: input.omega !== null && input.analysisStatus !== "failed"
+            ? sql`${agentsTable.successfulTasks} + 1` : sql`${agentsTable.successfulTasks}`,
+          failedTasks: input.analysisStatus === "failed"
+            ? sql`${agentsTable.failedTasks} + 1` : sql`${agentsTable.failedTasks}`,
+          lastOmega: input.omega === null
+            ? sql`CASE WHEN ${agentsTable.successfulTasks} + ${agentsTable.failedTasks} > 0
+              THEN ${agentsTable.successfulTasks}::double precision / (${agentsTable.successfulTasks} + ${agentsTable.failedTasks})
+              ELSE NULL END`
+            : input.analysisStatus === "failed"
+            ? sql`${agentsTable.successfulTasks}::double precision / (${agentsTable.successfulTasks} + ${agentsTable.failedTasks} + 1)`
+            : sql`(${agentsTable.successfulTasks} + 1)::double precision / (${agentsTable.successfulTasks} + ${agentsTable.failedTasks} + 1)`,
           lastFailure: input.failureReason,
           status: input.analysisStatus === "failed" ? "failed" : "completed",
           updatedAt: new Date(),
         },
       })
-      .returning({ xp: agentsTable.xp });
+      .returning({ xp: agentsTable.xp, omega: agentsTable.lastOmega });
 
-    return { message: insertedMessage, inserted: true, xp: agent?.xp ?? 0 };
+    return { message: insertedMessage, inserted: true, xp: agent?.xp ?? 0, omega: agent?.omega ?? null };
   });
 }

@@ -1,7 +1,9 @@
 import { createServer } from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
-import { stopSimulation } from "./lib/coherence_simulator";
+import { stopSimulation, startSimulation, subscribeToSimulation, getSimulationStatus } from "./lib/coherence_simulator";
+import { persistSimulationSample } from "./routes/coherence-simulation";
+import { attachMotorTelemetry, publishMotorHighCoherence } from "./routes/motor-telemetry";
 import { attachTerminalWS } from "./routes/terminal";
 import { pool } from "@workspace/db";
 import {
@@ -42,6 +44,12 @@ configureNeuralEventNotifier((eventId) => neuralEventTransport.publish(eventId))
 
 await neuralEventTransport.start();
 
+const detachMotorTelemetry = attachMotorTelemetry({
+  stopSimulation, startSimulation, subscribeToSimulation, getSimulationStatus,
+}, publishMotorHighCoherence);
+startSimulation(persistSimulationSample);
+logger.info("Motor 5.5 iniciado: telemetría autónoma del servidor");
+
 server.listen(port, () => {
   logger.info({ port }, "Server listening");
 });
@@ -49,6 +57,7 @@ server.listen(port, () => {
 process.once("SIGTERM", () => {
   logger.info("SIGTERM recibido; cerrando servidor y pool de PostgreSQL");
   stopSimulation();
+  detachMotorTelemetry();
   for (const client of terminalWss.clients) {
     client.terminate();
   }
