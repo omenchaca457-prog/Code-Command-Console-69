@@ -38,3 +38,20 @@ de conexión SSE, mantiene el transporte con heartbeats y limita la consulta
 completa a 90 segundos. El SDK mantiene su timeout de conexión/proveedor de
 45 segundos. La latencia hasta el primer token del proveedor sigue siendo
 externa; no se simulan tokens durante esa espera.
+
+Si la consulta supera 2000 ms, se registra un `warn`
+`deepseek_latency_degraded` y se emite un evento SSE `telemetry` con
+`type: latency_warning` y `status: degraded`. El HTTP 200 de un flujo ya
+abierto no se interpreta como una medición de salud o rendimiento.
+
+## Caché y estado del orquestador
+
+Los endpoints de agentes, Motor, eventos neuronales y contexto usan
+`Cache-Control: no-store, no-transform`; los validadores antiguos no producen
+respuestas 304 para esas lecturas de telemetría.
+
+Al iniciar se reconcilia `last_omega` de los tres agentes supervisados con sus
+propios contadores; sin observaciones, se guarda NULL y se muestra N/D.
+ORQUESTADOR-OPENAI se inicializa en `idle`, pasa a `active` durante una
+coordinación y vuelve a `idle` al terminar, incluso ante fallo. El evento
+de una orden completada se conserva por separado del estado actual del nodo.

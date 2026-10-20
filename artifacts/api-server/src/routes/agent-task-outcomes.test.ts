@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { integer, doublePrecision, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { completePersistedTask } from "./agents-simulation.ts";
 import { recordAgentTaskFailure, taskSuccessOmega, type AgentTaskStore } from "./agent-task-outcomes.ts";
+import { initializeAgentTelemetry } from "./agent-telemetry-initialization.ts";
 
 it("keeps unknown task Ω distinct from an observed failed task", () => {
   assert.equal(taskSuccessOmega(0, 0), null);
@@ -53,6 +54,18 @@ it("persists independent per-agent Ω for identical motor inputs and atomic conc
       assert.equal(rows[0].successful_tasks, 6);
       assert.equal(rows[0].failed_tasks, 1);
       assert.equal(rows[0].last_omega, 6 / 7);
+      await client.query("UPDATE agents SET last_omega = 0.969");
+      await client.query("INSERT INTO agents (id, name, status) VALUES ('orquestador-openai', 'ORQUESTADOR-OPENAI', 'completed')");
+      await initializeAgentTelemetry(store);
+      const reconciled = await client.query("SELECT id, last_omega, status FROM agents ORDER BY id");
+      assert.deepEqual(reconciled.rows.map(row => [row.id, row.last_omega]), [
+        ["coherence", 1], ["optimizer", 1], ["orquestador-openai", null], ["security", 6 / 7],
+      ]);
+      assert.equal(reconciled.rows.find(row => row.id === "orquestador-openai").status, "idle");
+      await client.query("UPDATE agents SET successful_tasks = 0, failed_tasks = 0, last_omega = 0.969 WHERE id = 'coherence'");
+      await initializeAgentTelemetry(store);
+      const unknown = await client.query("SELECT last_omega FROM agents WHERE id = 'coherence'");
+      assert.equal(unknown.rows[0].last_omega, null);
     } finally {
       await client.end();
     }

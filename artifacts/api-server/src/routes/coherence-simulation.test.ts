@@ -656,7 +656,7 @@ describe("coherence simulation route", () => {
       const streamResponse = await fetch(`${baseUrl}/api/coherence-simulation/stream`);
       assert.equal(streamResponse.status, 200);
       assert.match(streamResponse.headers.get("content-type") ?? "", /^text\/event-stream/);
-      assert.equal(streamResponse.headers.get("cache-control"), "no-cache, no-transform");
+      assert.equal(streamResponse.headers.get("cache-control"), "no-store, no-transform");
       assert.equal(streamResponse.headers.get("x-accel-buffering"), "no");
 
       const stream = createSseReader(streamResponse);

@@ -1,4 +1,5 @@
 import { boundedContextRead } from "./deepseek-context-read.ts";
+import { monitorDeepseekLatency } from "./deepseek-latency.ts";
 import OpenAI from "openai";
 import { Router, type Request, type Response } from "express";
 import {
@@ -254,11 +255,20 @@ const handleDeepseekChat = async (
 
   res.status(200);
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Cache-Control", "no-store, no-transform");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
   res.write(": connected; preparing context\n\n");
+  const latency = monitorDeepseekLatency({
+    warn: fields => req.log.warn(fields, "DeepSeek: latencia degradada; HTTP 200 indica transporte SSE, no salud"),
+    emitWarning: fields => {
+      if (!res.writableEnded && !res.destroyed) {
+        res.write(`event: telemetry\ndata: ${JSON.stringify({ type: "latency_warning", ...fields })}\n\n`);
+      }
+    },
+  });
+  res.once("close", () => latency.stop());
   const heartbeat = setInterval(() => {
     if (!res.writableEnded && !res.destroyed) res.write(": keep-alive\n\n");
   }, 1000);
@@ -348,6 +358,7 @@ const handleDeepseekChat = async (
         const delta = chunk.choices[0]?.delta;
         if (chunk.choices[0]?.finish_reason === "length") truncated = true;
         if (typeof delta?.content === "string" && delta.content.length > 0) {
+          latency.firstToken();
           assistantText += delta.content;
           res.write(`data: ${JSON.stringify({ delta: delta.content })}\n\n`);
         }
@@ -447,6 +458,7 @@ const handleDeepseekChat = async (
       res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
     }
   } finally {
+    latency.stop();
     clearStreamTimers();
     if (!res.writableEnded) res.end();
   }

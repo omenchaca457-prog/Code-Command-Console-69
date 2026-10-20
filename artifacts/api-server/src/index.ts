@@ -4,6 +4,7 @@ import { logger } from "./lib/logger";
 import { stopSimulation, startSimulation, subscribeToSimulation, getSimulationStatus } from "./lib/coherence_simulator";
 import { persistSimulationSample } from "./routes/coherence-simulation";
 import { attachMotorTelemetry, publishMotorHighCoherence } from "./routes/motor-telemetry";
+import { initializeAgentTelemetry } from "./routes/agent-telemetry-initialization";
 import { attachTerminalWS } from "./routes/terminal";
 import { pool } from "@workspace/db";
 import {
@@ -43,6 +44,7 @@ const neuralEventTransport = new PostgresNeuralEventTransport({
 configureNeuralEventNotifier((eventId) => neuralEventTransport.publish(eventId));
 
 await neuralEventTransport.start();
+await initializeAgentTelemetry();
 
 const detachMotorTelemetry = attachMotorTelemetry({
   stopSimulation, startSimulation, subscribeToSimulation, getSimulationStatus,

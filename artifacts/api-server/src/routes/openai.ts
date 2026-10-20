@@ -66,6 +66,7 @@ export function getOpenAiImageFailureMessage(error: unknown): string {
 }
 
 type OpenAiRouteDependencies = {
+  markAgentIdle: () => Promise<void>;
   getApiKey: () => string | undefined;
   loadAgentStates: () => Promise<AgentState[]>;
   streamCompletion: (input: {
@@ -90,6 +91,12 @@ function getObjectStorageClient() {
 }
 
 const defaultDependencies: OpenAiRouteDependencies = {
+  markAgentIdle: async () => {
+    const { db, agentsTable } = await import("@workspace/db");
+    const { eq } = await import("drizzle-orm");
+    await db.update(agentsTable).set({ status: "idle", updatedAt: new Date() })
+      .where(eq(agentsTable.id, AGENT_ID));
+  },
   getApiKey: getConfiguredOpenAiKey,
   loadAgentStates: async () => {
     const { agentsTable, db } = await import("@workspace/db");
@@ -156,8 +163,7 @@ const defaultDependencies: OpenAiRouteDependencies = {
     return id;
   },
   persistAndPublishDecision: async (content) => {
-    const { agentsTable, db, neuralEventsTable } = await import("@workspace/db");
-    const { eq } = await import("drizzle-orm");
+    const { db, neuralEventsTable } = await import("@workspace/db");
     let created;
     try {
       [created] = await db
@@ -184,10 +190,6 @@ const defaultDependencies: OpenAiRouteDependencies = {
     } catch {
       eventStatus = "persisted_only";
     }
-    await db
-      .update(agentsTable)
-      .set({ status: "completed", updatedAt: new Date() })
-      .where(eq(agentsTable.id, AGENT_ID));
     return eventStatus;
   },
 };
@@ -197,6 +199,7 @@ export function createOpenAiRouter(
 ) {
   const dependencies = { ...defaultDependencies, ...overrides };
   const router = Router();
+  let activeRequests = 0;
 
   router.post("/openai/chat", async (req: Request, res: Response) => {
     const prompt = req.body?.prompt;
@@ -233,6 +236,7 @@ export function createOpenAiRouter(
     }
 
     let generationCompleted = false;
+    activeRequests += 1;
     try {
       const agents = await dependencies.loadAgentStates();
       const stream = dependencies.streamCompletion({
@@ -242,7 +246,7 @@ export function createOpenAiRouter(
       });
       res.status(200).set({
         "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
+        "Cache-Control": "no-store, no-transform",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
       });
@@ -287,6 +291,15 @@ export function createOpenAiRouter(
         res.end();
       } else if (!res.headersSent) {
         res.status(502).json({ error: "No se pudo completar la consulta a OpenAI." });
+      }
+    } finally {
+      activeRequests -= 1;
+      if (activeRequests === 0) {
+        try {
+          await dependencies.markAgentIdle();
+        } catch {
+          req.log.error({ agent: AGENT_ID }, "No se pudo restaurar el estado idle del orquestador");
+        }
       }
     }
   });

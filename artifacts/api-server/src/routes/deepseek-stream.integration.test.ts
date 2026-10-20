@@ -45,7 +45,7 @@ async function withServer(
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    Object.assign(req, { log: { error: () => undefined } });
+    Object.assign(req, { log: { error: () => undefined, warn: () => undefined } });
     next();
   });
   app.use(router);
@@ -92,6 +92,39 @@ function parseTestBody(body: unknown) {
 }
 
 describe("SQ-AI simulated streaming route", () => {
+  it("reports a slow HTTP 200 stream as degraded in both logs and SSE", async () => {
+    const warnings: Array<Record<string, unknown>> = [];
+    const router = express.Router();
+    router.use((req, _res, next) => {
+      req.log.warn = ((fields: Record<string, unknown>) => { warnings.push(fields); }) as typeof req.log.warn;
+      next();
+    });
+    router.use(createDeepseekRouter({
+      getApiKey: () => "test-key",
+      parseBody: async body => parseTestBody(body),
+      loadHistory: async () => "",
+      executeTool: async () => "{}",
+      createClient: () => ({ chat: { completions: { create: async () => (async function* () {
+        await new Promise(resolve => setTimeout(resolve, 2100));
+        yield makeChunk({ content: "Respuesta lenta" });
+      })() } } }),
+    }));
+    await withServer(router, async baseUrl => {
+      const response = await fetch(`${baseUrl}/deepseek/chat`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "Prueba de latencia" }),
+      });
+      assert.equal(response.status, 200);
+      const body = await response.text();
+      assert.match(body, /event: telemetry/);
+      assert.match(body, /"type":"latency_warning"/);
+      assert.match(body, /"status":"degraded"/);
+      assert.equal(warnings.length, 1);
+      assert.equal(warnings[0]?.thresholdMs, 2000);
+      assert.equal(warnings[0]?.event, "deepseek_latency_degraded");
+    });
+  });
+
   it("sends SSE immediately, bounds stalled context and delivers a token before completion", async () => {
     let releaseFinal!: () => void;
     const finalGate = new Promise<void>(resolve => { releaseFinal = resolve; });

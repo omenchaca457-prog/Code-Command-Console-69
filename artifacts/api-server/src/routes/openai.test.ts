@@ -3,7 +3,11 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import express from "express";
 import { describe, it } from "node:test";
-import { createOpenAiRouter, getOpenAiFailureMessage } from "./openai.ts";
+import { createOpenAiRouter as createBaseOpenAiRouter, getOpenAiFailureMessage } from "./openai.ts";
+
+function createOpenAiRouter(overrides: Parameters<typeof createBaseOpenAiRouter>[0] = {}) {
+  return createBaseOpenAiRouter({ markAgentIdle: async () => {}, ...overrides });
+}
 
 describe("POST /openai/chat", () => {
   it("shows a safe, actionable message when OpenAI rejects the key", () => {
@@ -34,7 +38,9 @@ describe("POST /openai/chat", () => {
   it("streams the final decision and records the OpenAI-Master neural event", async () => {
     let stateRead = false;
     let recordedDecision = "";
+    let returnedToIdle = false;
     const router = createOpenAiRouter({
+      markAgentIdle: async () => { returnedToIdle = true; },
       getApiKey: () => "test-key",
       loadAgentStates: async () => {
         stateRead = true;
@@ -90,6 +96,7 @@ describe("POST /openai/chat", () => {
       assert.match(body, /"content":"Prioriza "/);
       assert.match(body, /"content":"el agente activo\."/);
       assert.match(body, /"agent":"ORQUESTADOR-OPENAI","node":"OpenAI-Master","eventStatus":"delivered"/);
+      assert.equal(returnedToIdle, true);
       assert.equal(stateRead, true);
       assert.equal(recordedDecision, "Prioriza el agente activo.");
     } finally {

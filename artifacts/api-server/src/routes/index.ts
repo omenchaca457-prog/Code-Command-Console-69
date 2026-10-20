@@ -13,8 +13,14 @@ import cortexRouter from "./cortex";
 import openAiRouter from "./openai";
 import coherenceSimulationRouter from "./coherence-simulation";
 import agentsSimulationRouter from "./agents-simulation";
+import { disableTelemetryCache } from "./telemetry-cache";
 
 const router: IRouter = Router();
+
+router.use([
+  "/agents", "/coherence-simulation", "/neural-events", "/diagnostics",
+  "/healthz", "/cortex/context", "/deepseek/chat", "/chat", "/openai/chat",
+], disableTelemetryCache);
 
 router.use(healthRouter);
 router.use(executeRouter);

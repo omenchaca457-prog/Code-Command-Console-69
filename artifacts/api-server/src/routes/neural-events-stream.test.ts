@@ -163,7 +163,7 @@ describe("GET /api/neural-events/stream", () => {
         firstResponse.headers.get("content-type") ?? "",
         /^text\/event-stream; charset=utf-8$/,
       );
-      assert.equal(firstResponse.headers.get("cache-control"), "no-cache, no-transform");
+      assert.equal(firstResponse.headers.get("cache-control"), "no-store, no-transform");
       assert.equal(firstResponse.headers.get("connection"), "keep-alive");
       assert.equal(firstResponse.headers.get("x-accel-buffering"), "no");
 
