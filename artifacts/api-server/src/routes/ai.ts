@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type OpenAI from "openai";
-import { db, conversations, messages, agentsTable, neuralEventsTable } from "@workspace/db";
+import { db, conversations, messages, agentsTable } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { eq, asc, sql } from "drizzle-orm";
 import { AiChatBody, AiExplainBody, AiImproveBody } from "@workspace/api-zod";
@@ -10,8 +10,9 @@ import {
   buildAgentSystemPrompt,
   evaluateAgentResponse,
 } from "./agent-evaluation";
-import { AgentCircuitBreaker } from "./agent-circuit-breaker";
-import { publishNeuralEvent } from "./neural-event-bus";
+import { AgentCircuitBlockedError, AgentTaskValidationError } from "./agent-circuit-breaker";
+import { agentSwarmCircuit } from "./agent-swarm-circuit";
+import { validateAgentOutput } from "./agent-safety-validation";
 import {
   AI_CODE_TOOLS,
   createAiCodeChatRouter,
@@ -19,7 +20,6 @@ import {
 } from "./ai-code-chat";
 
 const router = Router();
-const agentCircuitBreaker = new AgentCircuitBreaker();
 const AGENT_PROVIDER_TIMEOUT_MS = 5_000;
 
 router.use(createAiCodeChatRouter({
@@ -145,140 +145,129 @@ router.post("/ai/chat", async (req, res) => {
     }
   }
 
-  if (agentId) {
-    const remainingMs = agentCircuitBreaker.remainingMs(agentId);
-    if (remainingMs > 0) {
+  try {
+    const result = await agentSwarmCircuit.execute(agentId, async () => {
+      const agentMetrics = buildAgentEvidenceMetrics(context, language);
+      if (agentSwarmCircuit.getSnapshot(agentId).state === "HALF-OPEN" && !agentMetrics.evidence_available) {
+        throw new AgentTaskValidationError("La auditoría de recuperación requiere código o métricas verificables.");
+      }
+      await db
+        .insert(agentsTable)
+        .values({
+          id: agentId,
+          name: agentName || agentId,
+          status: "active",
+        })
+        .onConflictDoUpdate({
+          target: agentsTable.id,
+          set: { name: agentName || agentId, status: "active", updatedAt: new Date() },
+        });
+
+      const [conv] = await db
+        .insert(conversations)
+        .values({ title: message.slice(0, 60) })
+        .returning();
+
+      const systemPrompt = [
+        buildAgentSystemPrompt(agentRolePrompt, agentName),
+        language ? `Lenguaje analizado: ${language}.` : "",
+        `Payload obligatorio del nodo: ${JSON.stringify(agentMetrics)}. Estas métricas fueron calculadas por el servidor; no las alteres.`,
+        context
+          ? `Código o métricas verificables para el análisis:\n\`\`\`\n${context}\n\`\`\``
+          : "No se proporcionó código ni métricas verificables.",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
+      await db.insert(messages).values([
+        { conversationId: conv.id, role: "system", content: systemPrompt },
+        { conversationId: conv.id, role: "user", content: message },
+      ]);
+
+      const history = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, conv.id))
+        .orderBy(asc(messages.id));
+
+      let completion: Awaited<ReturnType<typeof openai.chat.completions.create>>;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), AGENT_PROVIDER_TIMEOUT_MS);
+      try {
+        completion = await openai.chat.completions.create({
+          model: "gpt-5.4",
+          max_completion_tokens: 8192,
+          messages: history.map((item) => ({
+            role: item.role as "system" | "user" | "assistant",
+            content: item.content,
+          })),
+        }, { signal: controller.signal });
+      } catch (error) {
+        if (controller.signal.aborted) {
+          throw new AgentTaskValidationError(`El proveedor superó el límite de ${AGENT_PROVIDER_TIMEOUT_MS} ms.`);
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      const aiResponse = completion.choices[0]?.message?.content ?? "";
+      const { omega, analysisStatus, failureReason } = validateAgentOutput(
+        aiResponse,
+        completion.choices[0]?.finish_reason ?? null,
+        context,
+        language,
+      );
+      const saved = await persistAgentResponse({
+        conversationId: conv.id,
+        idempotencyKey: idempotencyKey!,
+        agentId,
+        agentName: agentName || agentId,
+        content: aiResponse,
+        omega,
+        analysisStatus,
+        failureReason,
+      });
+      const finalAnalysis = saved.inserted
+        ? { omega, analysisStatus }
+        : evaluateAgentResponse(saved.message.content, context);
+
+      return {
+        response: saved.message.content,
+        conversationId: saved.message.conversationId,
+        omega: finalAnalysis.omega,
+        xp: saved.xp,
+        analysisStatus: finalAnalysis.analysisStatus,
+        status: finalAnalysis.analysisStatus === "failed" ? "failed" : "completed",
+        agentMetrics,
+      };
+    });
+    res.json(result);
+  } catch (error) {
+    const circuit = agentSwarmCircuit.getSnapshot(agentId);
+    const blocked = error instanceof AgentCircuitBlockedError;
+    const failure = blocked
+      ? error.message
+      : circuit.lastFailure ?? "La ejecución del agente no superó la validación.";
+    req.log.warn({ agentId, circuit, blocked }, "Agent Swarm: tarea detenida");
+    if (!blocked) {
       await db.update(agentsTable).set({
-        status: "standby",
+        status: circuit.state === "OPEN" ? "standby" : "failed",
+        failedAnalyses: sql`${agentsTable.failedAnalyses} + 1`,
+        lastFailure: failure,
+        lastOmega: null,
         updatedAt: new Date(),
       }).where(eq(agentsTable.id, agentId));
-      res.status(503).json({
-        error: "Agente en pausa de seguridad tras fallos consecutivos. Reintenta cuando termine el enfriamiento.",
-        status: "standby",
-        retryAfterMs: remainingMs,
-      });
-      return;
     }
-  }
-
-  const agentMetrics = buildAgentEvidenceMetrics(context, language);
-  if (agentId) {
-    await db
-      .insert(agentsTable)
-      .values({
-        id: agentId,
-        name: agentName || agentId,
-        status: "active",
-      })
-      .onConflictDoUpdate({
-        target: agentsTable.id,
-        set: { name: agentName || agentId, status: "active", updatedAt: new Date() },
-      });
-  }
-
-  const [conv] = await db
-    .insert(conversations)
-    .values({ title: message.slice(0, 60) })
-    .returning();
-
-  const systemPrompt = [
-    buildAgentSystemPrompt(agentRolePrompt, agentName),
-    language ? `Lenguaje analizado: ${language}.` : "",
-    `Payload obligatorio del nodo: ${JSON.stringify(agentMetrics)}. Estas métricas fueron calculadas por el servidor; no las alteres.`,
-    context
-      ? `Código o métricas verificables para el análisis:\n\`\`\`\n${context}\n\`\`\``
-      : "No se proporcionó código ni métricas verificables.",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-
-  await db.insert(messages).values([
-    { conversationId: conv.id, role: "system", content: systemPrompt },
-    { conversationId: conv.id, role: "user", content: message },
-  ]);
-
-  const history = await db
-    .select()
-    .from(messages)
-    .where(eq(messages.conversationId, conv.id))
-    .orderBy(asc(messages.id));
-
-  let completion: Awaited<ReturnType<typeof openai.chat.completions.create>>;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), AGENT_PROVIDER_TIMEOUT_MS);
-  try {
-    completion = await openai.chat.completions.create({
-      model: "gpt-5.4",
-      max_completion_tokens: 8192,
-      messages: history.map((item) => ({
-        role: item.role as "system" | "user" | "assistant",
-        content: item.content,
-      })),
-    }, { signal: controller.signal });
-    agentCircuitBreaker.recordSuccess(agentId);
-  } catch (error) {
-    const breaker = agentCircuitBreaker.recordFailure(agentId);
-    const failure = controller.signal.aborted
-      ? `El proveedor superó el límite de ${AGENT_PROVIDER_TIMEOUT_MS} ms.`
-      : "El proveedor de IA no completó el análisis.";
-    await db.update(agentsTable).set({
-      status: breaker.remainingMs > 0 ? "standby" : "failed",
-      failedAnalyses: sql`${agentsTable.failedAnalyses} + 1`,
-      lastFailure: failure,
-      lastOmega: null,
-      updatedAt: new Date(),
-    }).where(eq(agentsTable.id, agentId));
-    const [neuralEvent] = await db.insert(neuralEventsTable).values({
-      origin: "agents",
-      eventType: breaker.remainingMs > 0 ? "cortex_recovery" : "agent_failed",
-      content: `agent=${agentId}; consecutive_failures=${breaker.consecutiveFailures}; ${failure}`,
-    }).returning();
-    await publishNeuralEvent({
-      id: neuralEvent.id,
-      origin: "agents",
-      eventType: neuralEvent.eventType,
-      content: neuralEvent.content,
-      createdAt: neuralEvent.createdAt.toISOString(),
-    });
-    res.status(controller.signal.aborted ? 504 : 502).json({
+    if (blocked && circuit.remainingMs > 0) {
+      res.setHeader("Retry-After", Math.ceil(circuit.remainingMs / 1000));
+    }
+    res.status(blocked ? 503 : 502).json({
       error: failure,
-      status: breaker.remainingMs > 0 ? "standby" : "failed",
-      retryAfterMs: breaker.remainingMs,
+      status: blocked || circuit.state === "OPEN" ? "standby" : "failed",
+      retryAfterMs: circuit.remainingMs,
     });
-    return;
-  } finally {
-    clearTimeout(timeout);
   }
-
-  const aiResponse = completion.choices[0]?.message?.content ?? "";
-
-  const { omega, analysisStatus, failureReason } = evaluateAgentResponse(
-    aiResponse,
-    context,
-  );
-  const saved = await persistAgentResponse({
-    conversationId: conv.id,
-    idempotencyKey: idempotencyKey!,
-    agentId,
-    agentName: agentName || agentId,
-    content: aiResponse,
-    omega,
-    analysisStatus,
-    failureReason,
-  });
-  const finalAnalysis = saved.inserted
-    ? { omega, analysisStatus }
-    : evaluateAgentResponse(saved.message.content, context);
-
-  res.json({
-    response: saved.message.content,
-    conversationId: saved.message.conversationId,
-    omega: finalAnalysis.omega,
-    xp: saved.xp,
-    analysisStatus: finalAnalysis.analysisStatus,
-    status: finalAnalysis.analysisStatus === "failed" ? "failed" : "completed",
-    agentMetrics,
-  });
 });
 
 router.post("/ai/explain", async (req, res) => {

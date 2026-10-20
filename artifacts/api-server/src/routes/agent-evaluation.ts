@@ -11,7 +11,7 @@ export function buildAgentSystemPrompt(
     AGENT_SWARM_SYSTEM_PROMPT,
     agentName ? `Agente: ${agentName}.` : "",
     rolePrompt ?? "",
-    "Estado obligatorio del nodo: active. Devuelve un bloque [PAYLOAD] con language, code_chars, code_lines y evidence_available; cita al menos una línea literal del código en [EVIDENCIA]. No inventes métricas. Termina con una línea exacta `Ω: 0.00` (valor entre 0 y 1).",
+    "Estado obligatorio del nodo: active. Devuelve un bloque [PAYLOAD]...[/PAYLOAD] con un objeto JSON que copie exactamente todos los campos del payload del servidor: status, language, code_chars, code_lines, non_empty_lines y evidence_available; cita al menos una línea literal del código en [EVIDENCIA]. No inventes métricas. Termina con una línea exacta `Ω: 0.00` (valor entre 0 y 1).",
   ]
     .filter(Boolean)
     .join("\n\n");

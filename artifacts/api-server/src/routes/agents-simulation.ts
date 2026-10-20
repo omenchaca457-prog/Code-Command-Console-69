@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { eq, sql } from "drizzle-orm";
+import { AgentCircuitBreaker, AgentCircuitBlockedError, AgentSafetyViolation } from "./agent-circuit-breaker.ts";
 
 type ParsedSimulationBody =
   | { success: true; data: { agentId: string; vector: string; coherence: number } }
@@ -59,11 +60,30 @@ export type SimulatedAgentTaskResult = SimulatedAgentTask & {
 export type AgentSimulationDependencies = {
   completeTask?: (task: SimulatedAgentTask) => Promise<SimulatedAgentTaskResult>;
   parseBody?: ParseSimulationBody;
+  circuit?: AgentCircuitBreaker;
+  onFailure?: (agentId: string, reason: string, open: boolean) => Promise<void>;
 };
 
+function validateSimulatedResult(task: SimulatedAgentTask, result: SimulatedAgentTaskResult) {
+  if (result.agentId !== task.agentId || result.agentName !== task.agentName ||
+      result.vector !== task.vector || result.coherence !== task.coherence ||
+      result.omega !== task.coherence / 100 || !result.action.trim() ||
+      result.status !== "completed" || !Number.isSafeInteger(result.xp) || result.xp < 0) {
+    throw new AgentSafetyViolation("Deriva de los parámetros verificables de la tarea sintética.");
+  }
+}
+
 async function completePersistedTask(task: SimulatedAgentTask): Promise<SimulatedAgentTaskResult> {
-  const { agentsTable, db } = await import("@workspace/db");
   const omega = Math.min(1, Math.max(0, task.coherence / 100));
+  const result: SimulatedAgentTaskResult = {
+    ...task,
+    action: AGENT_ROLES[task.agentId]!.action(task.vector, task.coherence),
+    omega,
+    xp: 0,
+    status: "completed",
+  };
+  validateSimulatedResult(task, result);
+  const { agentsTable, db } = await import("@workspace/db");
   const [agent] = await db
     .insert(agentsTable)
     .values({
@@ -86,13 +106,7 @@ async function completePersistedTask(task: SimulatedAgentTask): Promise<Simulate
     })
     .returning({ xp: agentsTable.xp });
 
-  return {
-    ...task,
-    action: AGENT_ROLES[task.agentId]!.action(task.vector, task.coherence),
-    omega,
-    xp: agent?.xp ?? 0,
-    status: "completed",
-  };
+  return { ...result, xp: agent?.xp ?? 0 };
 }
 
 export function createAgentSimulationRouter({
@@ -100,6 +114,17 @@ export function createAgentSimulationRouter({
   parseBody = async (body) => {
     const { RunSimulatedAgentAnalysisBody } = await import("@workspace/api-zod");
     return RunSimulatedAgentAnalysisBody.safeParse(body);
+  },
+  circuit,
+  onFailure = async (agentId, reason, open) => {
+    const { db, agentsTable } = await import("@workspace/db");
+    await db.update(agentsTable).set({
+      status: open ? "standby" : "failed",
+      lastOmega: null,
+      lastFailure: reason,
+      failedAnalyses: sql`${agentsTable.failedAnalyses} + 1`,
+      updatedAt: new Date(),
+    }).where(eq(agentsTable.id, agentId));
   },
 }: AgentSimulationDependencies = {}) {
   const router = Router();
@@ -112,23 +137,46 @@ export function createAgentSimulationRouter({
     }
 
     const role = AGENT_ROLES[parsed.data.agentId];
+    if (!/^\d{1,20}$/.test(parsed.data.vector)) {
+      res.status(400).json({ error: "Vector decimal inválido." });
+      return;
+    }
     const vectorValue = BigInt(parsed.data.vector);
     if (!role || vectorValue > 18_446_744_073_709_551_615n) {
       res.status(400).json({ error: "Agente o vector fuera del rango admitido." });
       return;
     }
-    if (parsed.data.coherence <= 90 || parsed.data.coherence > 100) {
+    if (!Number.isFinite(parsed.data.coherence) || parsed.data.coherence <= 90 || parsed.data.coherence > 100) {
       res.status(400).json({ error: "El análisis solo se activa con coherencia superior a 90%." });
       return;
     }
 
-    const result = await completeTask({
-      agentId: parsed.data.agentId,
+    const breaker = circuit ?? (await import("./agent-swarm-circuit.ts")).agentSwarmCircuit;
+    const task = {
+      ...parsed.data,
       agentName: role.name,
-      vector: parsed.data.vector,
-      coherence: parsed.data.coherence,
-    });
-    res.json(result);
+    };
+    try {
+      const result = await breaker.execute(task.agentId, async () => {
+        const result = await completeTask(task);
+        validateSimulatedResult(task, result);
+        return result;
+      });
+      res.json(result);
+    } catch (error) {
+      const snapshot = breaker.getSnapshot(task.agentId);
+      const blocked = error instanceof AgentCircuitBlockedError;
+      const reason = blocked ? error.message : snapshot.lastFailure!;
+      if (!blocked) await onFailure(task.agentId, reason, snapshot.state === "OPEN");
+      if (snapshot.remainingMs > 0) {
+        res.setHeader("Retry-After", Math.ceil(snapshot.remainingMs / 1000));
+      }
+      res.status(blocked ? 503 : 502).json({
+        error: reason,
+        status: blocked || snapshot.state === "OPEN" ? "standby" : "failed",
+        retryAfterMs: snapshot.remainingMs,
+      });
+    }
   });
 
   return router;
