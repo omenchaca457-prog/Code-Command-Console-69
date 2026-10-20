@@ -199,6 +199,27 @@ paths:
         "400":
           description: Invalid pagination parameters
 
+  /agents/simulated-analysis:
+    post:
+      operationId: runSimulatedAgentAnalysis
+      tags: [simulation]
+      summary: Run a synthetic agent task for a high-coherence motor sample
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulatedAgentAnalysisInput"
+      responses:
+        "200":
+          description: Agent completed the synthetic task and telemetry was updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulatedAgentAnalysisResult"
+        "400":
+          description: Invalid agent, vector, or coherence value
+
   /coherence-simulation/logs/page:
     get:
       operationId: listCoherenceSimulationLogPages
@@ -710,6 +731,37 @@ components:
           oneOf:
             - type: integer
             - type: "null"
+    SimulatedAgentAnalysisInput:
+      type: object
+      required: [agentId, vector, coherence]
+      properties:
+        agentId:
+          type: string
+          enum: [optimizer, security, architect, debug, docs, ideas, coherence]
+        vector:
+          type: string
+          pattern: "^\\d{1,20}$"
+        coherence:
+          type: number
+          exclusiveMinimum: 90
+          maximum: 100
+    SimulatedAgentAnalysisResult:
+      allOf:
+        - $ref: "#/components/schemas/SimulatedAgentAnalysisInput"
+        - type: object
+          required: [agentName, action, omega, xp, status]
+          properties:
+            agentName:
+              type: string
+            action:
+              type: string
+            omega:
+              type: number
+            xp:
+              type: integer
+            status:
+              type: string
+              enum: [completed]
     CoherenceSimulationLogOffsetPage:
       type: object
       required: [items, page, pageSize, total]

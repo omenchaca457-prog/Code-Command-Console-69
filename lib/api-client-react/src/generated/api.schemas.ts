@@ -125,6 +125,45 @@ export interface CoherenceSimulationLogPage {
   nextBeforeId: number | null;
 }
 
+export type SimulatedAgentAnalysisInputAgentId =
+  (typeof SimulatedAgentAnalysisInputAgentId)[keyof typeof SimulatedAgentAnalysisInputAgentId];
+
+export const SimulatedAgentAnalysisInputAgentId = {
+  optimizer: "optimizer",
+  security: "security",
+  architect: "architect",
+  debug: "debug",
+  docs: "docs",
+  ideas: "ideas",
+  coherence: "coherence",
+} as const;
+
+export interface SimulatedAgentAnalysisInput {
+  agentId: SimulatedAgentAnalysisInputAgentId;
+  /** @pattern ^\d{1,20}$ */
+  vector: string;
+  /**
+   * @maximum 100
+   * @exclusiveMinimum 90
+   */
+  coherence: number;
+}
+
+export type SimulatedAgentAnalysisResultStatus =
+  (typeof SimulatedAgentAnalysisResultStatus)[keyof typeof SimulatedAgentAnalysisResultStatus];
+
+export const SimulatedAgentAnalysisResultStatus = {
+  completed: "completed",
+} as const;
+
+export type SimulatedAgentAnalysisResult = SimulatedAgentAnalysisInput & {
+  agentName: string;
+  action: string;
+  omega: number;
+  xp: number;
+  status: SimulatedAgentAnalysisResultStatus;
+};
+
 export interface CoherenceSimulationLogOffsetPage {
   items: CoherenceSimulationLog[];
   page: number;

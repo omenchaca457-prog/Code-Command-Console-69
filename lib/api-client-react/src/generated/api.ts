@@ -41,6 +41,8 @@ import type {
   ListCoherenceSimulationLogsParams,
   NeuralEvent,
   NeuralEventInput,
+  SimulatedAgentAnalysisInput,
+  SimulatedAgentAnalysisResult,
   Snippet,
   TerminalMessage,
   TerminalMessageInput,
@@ -970,6 +972,96 @@ export function useListCoherenceSimulationLogs<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Run a synthetic agent task for a high-coherence motor sample
+ */
+export const getRunSimulatedAgentAnalysisUrl = () => {
+  return `/api/agents/simulated-analysis`;
+};
+
+export const runSimulatedAgentAnalysis = async (
+  simulatedAgentAnalysisInput: SimulatedAgentAnalysisInput,
+  options?: RequestInit,
+): Promise<SimulatedAgentAnalysisResult> => {
+  return customFetch<SimulatedAgentAnalysisResult>(
+    getRunSimulatedAgentAnalysisUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(simulatedAgentAnalysisInput),
+    },
+  );
+};
+
+export const getRunSimulatedAgentAnalysisMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runSimulatedAgentAnalysis>>,
+    TError,
+    { data: BodyType<SimulatedAgentAnalysisInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runSimulatedAgentAnalysis>>,
+  TError,
+  { data: BodyType<SimulatedAgentAnalysisInput> },
+  TContext
+> => {
+  const mutationKey = ["runSimulatedAgentAnalysis"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runSimulatedAgentAnalysis>>,
+    { data: BodyType<SimulatedAgentAnalysisInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return runSimulatedAgentAnalysis(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RunSimulatedAgentAnalysisMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runSimulatedAgentAnalysis>>
+>;
+export type RunSimulatedAgentAnalysisMutationBody =
+  BodyType<SimulatedAgentAnalysisInput>;
+export type RunSimulatedAgentAnalysisMutationError = ErrorType<void>;
+
+/**
+ * @summary Run a synthetic agent task for a high-coherence motor sample
+ */
+export const useRunSimulatedAgentAnalysis = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runSimulatedAgentAnalysis>>,
+    TError,
+    { data: BodyType<SimulatedAgentAnalysisInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof runSimulatedAgentAnalysis>>,
+  TError,
+  { data: BodyType<SimulatedAgentAnalysisInput> },
+  TContext
+> => {
+  return useMutation(getRunSimulatedAgentAnalysisMutationOptions(options));
+};
 
 /**
  * @summary List saved coherence simulation logs by page

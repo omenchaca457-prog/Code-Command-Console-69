@@ -176,6 +176,67 @@ export const ListCoherenceSimulationLogsResponse = zod.object({
 });
 
 /**
+ * @summary Run a synthetic agent task for a high-coherence motor sample
+ */
+export const runSimulatedAgentAnalysisBodyVectorRegExp = new RegExp(
+  "^\\d{1,20}$",
+);
+export const runSimulatedAgentAnalysisBodyCoherenceExclusiveMin = 90;
+export const runSimulatedAgentAnalysisBodyCoherenceMax = 100;
+
+export const RunSimulatedAgentAnalysisBody = zod.object({
+  agentId: zod.enum([
+    "optimizer",
+    "security",
+    "architect",
+    "debug",
+    "docs",
+    "ideas",
+    "coherence",
+  ]),
+  vector: zod.string().regex(runSimulatedAgentAnalysisBodyVectorRegExp),
+  coherence: zod
+    .number()
+    .gt(runSimulatedAgentAnalysisBodyCoherenceExclusiveMin)
+    .max(runSimulatedAgentAnalysisBodyCoherenceMax),
+});
+
+export const runSimulatedAgentAnalysisResponseOneVectorRegExp = new RegExp(
+  "^\\d{1,20}$",
+);
+export const runSimulatedAgentAnalysisResponseOneCoherenceExclusiveMin = 90;
+export const runSimulatedAgentAnalysisResponseOneCoherenceMax = 100;
+
+export const RunSimulatedAgentAnalysisResponse = zod
+  .object({
+    agentId: zod.enum([
+      "optimizer",
+      "security",
+      "architect",
+      "debug",
+      "docs",
+      "ideas",
+      "coherence",
+    ]),
+    vector: zod
+      .string()
+      .regex(runSimulatedAgentAnalysisResponseOneVectorRegExp),
+    coherence: zod
+      .number()
+      .gt(runSimulatedAgentAnalysisResponseOneCoherenceExclusiveMin)
+      .max(runSimulatedAgentAnalysisResponseOneCoherenceMax),
+  })
+  .and(
+    zod.object({
+      agentName: zod.string(),
+      action: zod.string(),
+      omega: zod.number(),
+      xp: zod.number(),
+      status: zod.enum(["completed"]),
+    }),
+  );
+
+/**
  * @summary List saved coherence simulation logs by page
  */
 export const listCoherenceSimulationLogPagesQueryPageDefault = 1;

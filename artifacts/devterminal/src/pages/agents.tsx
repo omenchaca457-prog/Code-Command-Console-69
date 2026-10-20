@@ -84,6 +84,31 @@ type Agent = {
   iterations: number;
 };
 
+type MotorSample = {
+  vector: string;
+  coherence: number;
+  turbulence: string;
+  vectorsProcessed: number;
+  timestamp: string;
+};
+
+type SimulatedAnalysisResult = {
+  agentId: string;
+  agentName: string;
+  vector: string;
+  coherence: number;
+  action: string;
+  omega: number;
+  xp: number;
+  status: "completed";
+};
+
+type MotorLog = {
+  id: number;
+  message: string;
+  timestamp: number;
+};
+
 let agentCounter = 0;
 function makeAgent(role: AgentRole): Agent {
   return {
@@ -104,6 +129,7 @@ export default function Agents() {
     makeAgent(ROLES[6]),
   ]);
   const [globalTask, setGlobalTask] = useState("");
+  const [motorLogs, setMotorLogs] = useState<MotorLog[]>([]);
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [autoEvolve, setAutoEvolve] = useState(false);
   const autoEvolveRef = useRef(false);
@@ -115,6 +141,9 @@ export default function Agents() {
   const { toast } = useToast();
   const evolveTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const evolveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const motorTaskQueuesRef = useRef(new Map<string, Promise<void>>());
+  const motorLogEndRef = useRef<HTMLDivElement>(null);
+  const motorLogIdRef = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -150,6 +179,103 @@ export default function Agents() {
   const updateAgent = useCallback((id: string, patch: Partial<Agent>) => {
     setAgents(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a));
   }, []);
+
+  const appendMotorLog = useCallback((message: string) => {
+    setMotorLogs((current) => [
+      ...current.slice(-39),
+      { id: ++motorLogIdRef.current, message, timestamp: Date.now() },
+    ]);
+  }, []);
+
+  const enqueueMotorAnalysis = useCallback((sample: MotorSample) => {
+    appendMotorLog(
+      `[Motor 5.5] Coherencia alta detectada. Iniciando análisis del vector.... vector=${sample.vector} · ${sample.coherence.toFixed(2)}%`,
+    );
+
+    for (const agent of agentsRef.current) {
+      const previous = motorTaskQueuesRef.current.get(agent.id) ?? Promise.resolve();
+      const task = previous.catch(() => undefined).then(async () => {
+        while (!activeRunsRef.current.acquire(agent.id)) {
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 50));
+        }
+
+        updateAgent(agent.id, { status: "thinking" });
+        try {
+          const response = await fetch(`${BASE_URL}/api/agents/simulated-analysis`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: agent.role.id,
+              vector: sample.vector,
+              coherence: sample.coherence,
+            }),
+          });
+          const data = await response.json() as SimulatedAnalysisResult | { error?: string };
+          if (!response.ok || !("action" in data)) {
+            throw new Error("error" in data ? data.error : "El análisis sintético no pudo completarse.");
+          }
+
+          setAgents((current) => current.map((item) => item.id === agent.id
+            ? {
+                ...item,
+                status: "done",
+                coherence: data.omega,
+                xp: data.xp,
+                iterations: item.iterations + 1,
+                messages: [
+                  ...item.messages.slice(-18),
+                  {
+                    role: "user",
+                    content: `Motor 5.5 · vector ${data.vector} · coherencia ${data.coherence.toFixed(2)}%`,
+                    ts: Date.now(),
+                  },
+                  { role: "agent", content: data.action, ts: Date.now() },
+                ],
+              }
+            : item));
+          appendMotorLog(`${data.agentName}: tarea sintética completada · Ω=${data.omega.toFixed(3)} · XP=${data.xp}`);
+        } catch (error) {
+          updateAgent(agent.id, {
+            status: "standby",
+            messages: [
+              ...agent.messages.slice(-18),
+              {
+                role: "agent",
+                content: error instanceof Error ? error.message : "Falló la tarea sintética del motor.",
+                ts: Date.now(),
+              },
+            ],
+          });
+          appendMotorLog(`${agent.role.name}: análisis en espera por un error de conexión.`);
+        } finally {
+          activeRunsRef.current.release(agent.id);
+        }
+      });
+
+      motorTaskQueuesRef.current.set(agent.id, task);
+      void task.finally(() => {
+        if (motorTaskQueuesRef.current.get(agent.id) === task) {
+          motorTaskQueuesRef.current.delete(agent.id);
+        }
+      }).catch(() => undefined);
+    }
+  }, [appendMotorLog, updateAgent]);
+
+  useEffect(() => {
+    const source = new EventSource(`${BASE_URL}/api/coherence-simulation/stream`);
+    source.addEventListener("sample", (event) => {
+      const sample = JSON.parse((event as MessageEvent<string>).data) as MotorSample;
+      if (sample.coherence > 90) enqueueMotorAnalysis(sample);
+    });
+    source.onerror = () => {
+      appendMotorLog("[Motor 5.5] Reconectando el flujo de telemetría…");
+    };
+    return () => source.close();
+  }, [appendMotorLog, enqueueMotorAnalysis]);
+
+  useEffect(() => {
+    motorLogEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [motorLogs]);
 
   const runAgent = useCallback(async (agent: Agent, task?: string) => {
     if (!activeRunsRef.current.acquire(agent.id)) return;
@@ -347,6 +473,24 @@ export default function Agents() {
           <Send className="h-3 w-3" />
         </button>
       </div>
+
+      <section aria-label="Actividad automática del Motor 5.5" className="flex-shrink-0 border-b border-[#00ffff]/10 bg-[#050809] px-4 py-2">
+        <div className="mb-1 flex items-center justify-between">
+          <span className="font-mono text-[9px] uppercase tracking-[.16em] text-[#00ffff]/70">Telemetría Motor 5.5 · análisis sintético (&gt;90% Ω)</span>
+          <span className="font-mono text-[9px] text-[#333]">{motorLogs.length} eventos</span>
+        </div>
+        <div aria-live="polite" aria-relevant="additions" className="max-h-20 overflow-y-auto font-mono text-[10px] leading-5">
+          {motorLogs.length === 0 ? (
+            <div className="text-[#30383a]">Esperando una muestra de alta coherencia…</div>
+          ) : motorLogs.map((log) => (
+            <div key={log.id} className="truncate text-[#00ffff]/80">
+              <span className="mr-2 text-[#475357]">{new Date(log.timestamp).toLocaleTimeString()}</span>
+              {log.message}
+            </div>
+          ))}
+          <div ref={motorLogEndRef} />
+        </div>
+      </section>
 
       <ScrollArea className="flex-1">
         <div className="p-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
