@@ -44,6 +44,15 @@ type LogsQueryParseResult =
   | { success: true; data: { page: number; pageSize: number; snapshotId?: number } }
   | { success: false; error: { message: string } };
 
+function hasSafePageOffset(page: number, pageSize: number): boolean {
+  return Number.isSafeInteger(page)
+    && page >= 1
+    && Number.isSafeInteger(pageSize)
+    && pageSize >= 1
+    && pageSize <= 100
+    && Number.isSafeInteger((page - 1) * pageSize);
+}
+
 const defaultSimulator: CoherenceSimulator = {
   getSimulationStatus,
   startSimulation,
@@ -116,6 +125,9 @@ async function parseSimulationLogsQuery(query: unknown): Promise<LogsQueryParseR
   const { ListCoherenceSimulationLogPagesQueryParams } = await import("@workspace/api-zod");
   const parsed = ListCoherenceSimulationLogPagesQueryParams.safeParse(query);
   if (!parsed.success) return parsed;
+  if (!hasSafePageOffset(parsed.data.page, parsed.data.pageSize)) {
+    return { success: false, error: { message: "page and pageSize must produce a safe offset" } };
+  }
   if (parsed.data.snapshotId !== undefined && !Number.isSafeInteger(parsed.data.snapshotId)) {
     return { success: false, error: { message: "snapshotId must be a safe integer" } };
   }
@@ -159,6 +171,10 @@ export function createCoherenceSimulationRouter({
     const parsed = await parseLogsQuery(req.query);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    if (!hasSafePageOffset(parsed.data.page, parsed.data.pageSize)) {
+      res.status(400).json({ error: "page and pageSize must produce a safe offset" });
       return;
     }
 

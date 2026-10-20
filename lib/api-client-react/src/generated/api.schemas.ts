@@ -379,6 +379,7 @@ export type ListCoherenceSimulationLogsParams = {
 export type ListCoherenceSimulationLogPagesParams = {
   /**
    * @minimum 1
+   * @maximum 9007199254740991
    */
   page?: number;
   /**

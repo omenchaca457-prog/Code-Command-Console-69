@@ -240,6 +240,7 @@ export const RunSimulatedAgentAnalysisResponse = zod
  * @summary List saved coherence simulation logs by page
  */
 export const listCoherenceSimulationLogPagesQueryPageDefault = 1;
+export const listCoherenceSimulationLogPagesQueryPageMax = 9007199254740991;
 
 export const listCoherenceSimulationLogPagesQueryPageSizeDefault = 20;
 export const listCoherenceSimulationLogPagesQueryPageSizeMax = 100;
@@ -248,6 +249,7 @@ export const ListCoherenceSimulationLogPagesQueryParams = zod.object({
   page: zod.coerce
     .number()
     .min(1)
+    .max(listCoherenceSimulationLogPagesQueryPageMax)
     .default(listCoherenceSimulationLogPagesQueryPageDefault),
   pageSize: zod.coerce
     .number()

@@ -316,7 +316,11 @@ describe("coherence simulation route", () => {
         const values = query as Record<string, unknown>;
         const page = Number(values.page ?? 1);
         const pageSize = Number(values.pageSize ?? 20);
-        if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+        if (
+          !Number.isSafeInteger(page) || page < 1
+          || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100
+          || !Number.isSafeInteger((page - 1) * pageSize)
+        ) {
           return { success: false, error: { message: "Invalid pagination" } };
         }
         return { success: true, data: { page, pageSize } };
@@ -349,6 +353,10 @@ describe("coherence simulation route", () => {
       assert.equal(invalidPageResponse.status, 400);
       const fractionalPageResponse = await fetch(`${baseUrl}/api/coherence-simulation/logs/page?page=1.5`);
       assert.equal(fractionalPageResponse.status, 400);
+      const oversizedPageResponse = await fetch(
+        `${baseUrl}/api/coherence-simulation/logs/page?page=1e100&pageSize=100`,
+      );
+      assert.equal(oversizedPageResponse.status, 400);
       assert.deepEqual(requestedPages, [{ page: 2, pageSize: 10 }]);
 
       for (const pageSize of ["0", "101", "1.5"]) {
