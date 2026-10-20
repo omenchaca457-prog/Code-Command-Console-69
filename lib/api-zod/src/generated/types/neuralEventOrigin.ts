@@ -14,4 +14,5 @@ export const NeuralEventOrigin = {
   runner: "runner",
   agents: "agents",
   creator: "creator",
+  motor: "motor",
 } as const;

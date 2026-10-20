@@ -18,6 +18,8 @@ tags:
     description: Neural activity events
   - name: ai
     description: AI assistant
+  - name: simulation
+    description: Synthetic coherence simulation
 paths:
   /healthz:
     get:
@@ -127,6 +129,45 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NeuralEvent"
+
+  /coherence-simulation/status:
+    get:
+      operationId: getCoherenceSimulationStatus
+      tags: [simulation]
+      summary: Get synthetic coherence simulator status
+      responses:
+        "200":
+          description: Current simulator status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoherenceSimulationStatus"
+
+  /coherence-simulation/start:
+    post:
+      operationId: startCoherenceSimulation
+      tags: [simulation]
+      summary: Start synthetic coherence simulation
+      responses:
+        "200":
+          description: Simulator status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoherenceSimulationStatus"
+
+  /coherence-simulation/stop:
+    post:
+      operationId: stopCoherenceSimulation
+      tags: [simulation]
+      summary: Stop synthetic coherence simulation
+      responses:
+        "200":
+          description: Simulator status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoherenceSimulationStatus"
 
   /openai/image:
     post:
@@ -527,7 +568,7 @@ components:
           type: integer
         origin:
           type: string
-          enum: [terminal, runner, agents, creator]
+          enum: [terminal, runner, agents, creator, motor]
         eventType:
           type: string
         content:
@@ -542,7 +583,7 @@ components:
       properties:
         origin:
           type: string
-          enum: [terminal, runner, agents, creator]
+          enum: [terminal, runner, agents, creator, motor]
         eventType:
           type: string
           minLength: 1
@@ -552,6 +593,33 @@ components:
           minLength: 1
           maxLength: 2000
       required: [origin, eventType, content]
+    CoherenceSimulationSample:
+      type: object
+      required: [vector, coherence, turbulence, vectorsProcessed, timestamp]
+      properties:
+        vector:
+          type: string
+        coherence:
+          type: number
+        turbulence:
+          type: string
+        vectorsProcessed:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+    CoherenceSimulationStatus:
+      type: object
+      required: [running, vectorsProcessed, latest]
+      properties:
+        running:
+          type: boolean
+        vectorsProcessed:
+          type: integer
+        latest:
+          oneOf:
+            - $ref: "#/components/schemas/CoherenceSimulationSample"
+            - type: "null"
 
     ImageGenerationInput:
       type: object

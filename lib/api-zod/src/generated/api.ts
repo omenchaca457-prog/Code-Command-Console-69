@@ -72,7 +72,7 @@ export const CreateSnippetBody = zod.object({
  */
 export const ListNeuralEventsResponseItem = zod.object({
   id: zod.number(),
-  origin: zod.enum(["terminal", "runner", "agents", "creator"]),
+  origin: zod.enum(["terminal", "runner", "agents", "creator", "motor"]),
   eventType: zod.string(),
   content: zod.string(),
   createdAt: zod.coerce.date(),
@@ -87,9 +87,63 @@ export const createNeuralEventBodyEventTypeMax = 80;
 export const createNeuralEventBodyContentMax = 2000;
 
 export const CreateNeuralEventBody = zod.object({
-  origin: zod.enum(["terminal", "runner", "agents", "creator"]),
+  origin: zod.enum(["terminal", "runner", "agents", "creator", "motor"]),
   eventType: zod.string().min(1).max(createNeuralEventBodyEventTypeMax),
   content: zod.string().min(1).max(createNeuralEventBodyContentMax),
+});
+
+/**
+ * @summary Get synthetic coherence simulator status
+ */
+export const GetCoherenceSimulationStatusResponse = zod.object({
+  running: zod.boolean(),
+  vectorsProcessed: zod.number(),
+  latest: zod.union([
+    zod.object({
+      vector: zod.string(),
+      coherence: zod.number(),
+      turbulence: zod.string(),
+      vectorsProcessed: zod.number(),
+      timestamp: zod.coerce.date(),
+    }),
+    zod.null(),
+  ]),
+});
+
+/**
+ * @summary Start synthetic coherence simulation
+ */
+export const StartCoherenceSimulationResponse = zod.object({
+  running: zod.boolean(),
+  vectorsProcessed: zod.number(),
+  latest: zod.union([
+    zod.object({
+      vector: zod.string(),
+      coherence: zod.number(),
+      turbulence: zod.string(),
+      vectorsProcessed: zod.number(),
+      timestamp: zod.coerce.date(),
+    }),
+    zod.null(),
+  ]),
+});
+
+/**
+ * @summary Stop synthetic coherence simulation
+ */
+export const StopCoherenceSimulationResponse = zod.object({
+  running: zod.boolean(),
+  vectorsProcessed: zod.number(),
+  latest: zod.union([
+    zod.object({
+      vector: zod.string(),
+      coherence: zod.number(),
+      turbulence: zod.string(),
+      vectorsProcessed: zod.number(),
+      timestamp: zod.coerce.date(),
+    }),
+    zod.null(),
+  ]),
 });
 
 /**

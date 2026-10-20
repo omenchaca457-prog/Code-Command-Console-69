@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { TerminalSquare, LibrarySquare, Cpu, ShieldAlert, Eye, Play, Network, Bot, Code2, BrainCircuit, Sparkles } from "lucide-react";
+import { TerminalSquare, LibrarySquare, Cpu, ShieldAlert, Eye, Play, Network, Bot, Code2, BrainCircuit, Sparkles, Activity } from "lucide-react";
 import { useHealthCheck } from "@workspace/api-client-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -18,6 +18,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: "/agents", label: "Agents", icon: Bot, color: "#a78bfa" },
     { href: "/cortex", label: "Cortex IA", icon: BrainCircuit, color: "#00ff41" },
     { href: "/creator", label: "CREATOR", icon: Sparkles, color: "#ff4de1" },
+    { href: "/motor", label: "MOTOR 5.5", icon: Activity, color: "#00f0ff" },
   ];
 
   return (

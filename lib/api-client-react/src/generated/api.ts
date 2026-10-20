@@ -25,6 +25,7 @@ import type {
   AiImproveRequest,
   ClearTerminalMessagesParams,
   ClearTerminalMessagesResponse,
+  CoherenceSimulationStatus,
   CreateSnippetBody,
   DeepSeekChatInput,
   ExecuteRequest,
@@ -607,6 +608,254 @@ export const useCreateNeuralEvent = <
   TContext
 > => {
   return useMutation(getCreateNeuralEventMutationOptions(options));
+};
+
+/**
+ * @summary Get synthetic coherence simulator status
+ */
+export const getGetCoherenceSimulationStatusUrl = () => {
+  return `/api/coherence-simulation/status`;
+};
+
+export const getCoherenceSimulationStatus = async (
+  options?: RequestInit,
+): Promise<CoherenceSimulationStatus> => {
+  return customFetch<CoherenceSimulationStatus>(
+    getGetCoherenceSimulationStatusUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetCoherenceSimulationStatusQueryKey = () => {
+  return [`/api/coherence-simulation/status`] as const;
+};
+
+export const getGetCoherenceSimulationStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCoherenceSimulationStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getCoherenceSimulationStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCoherenceSimulationStatusQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCoherenceSimulationStatus>>
+  > = ({ signal }) =>
+    getCoherenceSimulationStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCoherenceSimulationStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCoherenceSimulationStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCoherenceSimulationStatus>>
+>;
+export type GetCoherenceSimulationStatusQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get synthetic coherence simulator status
+ */
+
+export function useGetCoherenceSimulationStatus<
+  TData = Awaited<ReturnType<typeof getCoherenceSimulationStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getCoherenceSimulationStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCoherenceSimulationStatusQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Start synthetic coherence simulation
+ */
+export const getStartCoherenceSimulationUrl = () => {
+  return `/api/coherence-simulation/start`;
+};
+
+export const startCoherenceSimulation = async (
+  options?: RequestInit,
+): Promise<CoherenceSimulationStatus> => {
+  return customFetch<CoherenceSimulationStatus>(
+    getStartCoherenceSimulationUrl(),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getStartCoherenceSimulationMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startCoherenceSimulation>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof startCoherenceSimulation>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["startCoherenceSimulation"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof startCoherenceSimulation>>,
+    void
+  > = () => {
+    return startCoherenceSimulation(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StartCoherenceSimulationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof startCoherenceSimulation>>
+>;
+
+export type StartCoherenceSimulationMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Start synthetic coherence simulation
+ */
+export const useStartCoherenceSimulation = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startCoherenceSimulation>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof startCoherenceSimulation>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getStartCoherenceSimulationMutationOptions(options));
+};
+
+/**
+ * @summary Stop synthetic coherence simulation
+ */
+export const getStopCoherenceSimulationUrl = () => {
+  return `/api/coherence-simulation/stop`;
+};
+
+export const stopCoherenceSimulation = async (
+  options?: RequestInit,
+): Promise<CoherenceSimulationStatus> => {
+  return customFetch<CoherenceSimulationStatus>(
+    getStopCoherenceSimulationUrl(),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getStopCoherenceSimulationMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof stopCoherenceSimulation>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof stopCoherenceSimulation>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["stopCoherenceSimulation"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof stopCoherenceSimulation>>,
+    void
+  > = () => {
+    return stopCoherenceSimulation(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StopCoherenceSimulationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof stopCoherenceSimulation>>
+>;
+
+export type StopCoherenceSimulationMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Stop synthetic coherence simulation
+ */
+export const useStopCoherenceSimulation = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof stopCoherenceSimulation>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof stopCoherenceSimulation>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getStopCoherenceSimulationMutationOptions(options));
 };
 
 /**

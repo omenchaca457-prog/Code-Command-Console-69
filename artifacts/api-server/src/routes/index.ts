@@ -11,6 +11,7 @@ import messagesRouter from "./messages";
 import diagnosticsRouter from "./diagnostics";
 import cortexRouter from "./cortex";
 import openAiRouter from "./openai";
+import coherenceSimulationRouter from "./coherence-simulation";
 
 const router: IRouter = Router();
 
@@ -25,6 +26,7 @@ router.use(messagesRouter);
 router.use(diagnosticsRouter);
 router.use(cortexRouter);
 router.use(openAiRouter);
+router.use(coherenceSimulationRouter);
 router.use(autorunRouter);
 
 export default router;

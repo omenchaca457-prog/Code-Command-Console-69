@@ -1,6 +1,7 @@
 import { createServer } from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
+import { stopSimulation } from "./lib/coherence_simulator";
 import { attachTerminalWS } from "./routes/terminal";
 import { pool } from "@workspace/db";
 import {
@@ -47,6 +48,7 @@ server.listen(port, () => {
 
 process.once("SIGTERM", () => {
   logger.info("SIGTERM recibido; cerrando servidor y pool de PostgreSQL");
+  stopSimulation();
   for (const client of terminalWss.clients) {
     client.terminate();
   }

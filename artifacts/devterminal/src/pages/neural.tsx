@@ -402,12 +402,16 @@ export default function Neural() {
 
       const agentName = event.content.match(/agent=([^;]+)/)?.[1]?.trim();
       const language = event.content.match(/language=([^;]+)/)?.[1]?.trim();
-      const label = event.origin === "agents"
+      const label = event.origin === "motor"
+        ? "ALTA COHERENCIA"
+        : event.origin === "agents"
         ? agentName || "agent"
         : event.origin === "runner"
           ? language || "runner"
           : event.eventType === "ai_query" ? "terminal/ds" : "terminal";
-      const color = event.origin === "agents"
+      const color = event.origin === "motor"
+        ? "#00f0ff"
+        : event.origin === "agents"
         ? "#a78bfa"
         : event.origin === "runner" ? "#22c55e" : "#00ffff";
       if (nodes.length >= 36) {
@@ -422,6 +426,10 @@ export default function Neural() {
       const node = makeNode(label.slice(0, 18), color, 13, 1.4, canvasRef.current?.width ?? 800, canvasRef.current?.height ?? 500, Date.now());
       node.connections.push(core.id);
       node.pulse = 1;
+      if (event.origin === "motor") {
+        node.radius = 19;
+        node.energy = 2.5;
+      }
       nodes.push(node);
       core.connections.push(node.id);
       for (let i = 0; i < 4; i += 1) {

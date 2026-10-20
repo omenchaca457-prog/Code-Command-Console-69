@@ -61,6 +61,7 @@ export const NeuralEventOrigin = {
   runner: "runner",
   agents: "agents",
   creator: "creator",
+  motor: "motor",
 } as const;
 
 export interface NeuralEvent {
@@ -79,6 +80,7 @@ export const NeuralEventInputOrigin = {
   runner: "runner",
   agents: "agents",
   creator: "creator",
+  motor: "motor",
 } as const;
 
 export interface NeuralEventInput {
@@ -93,6 +95,20 @@ export interface NeuralEventInput {
    * @maxLength 2000
    */
   content: string;
+}
+
+export interface CoherenceSimulationSample {
+  vector: string;
+  coherence: number;
+  turbulence: string;
+  vectorsProcessed: number;
+  timestamp: string;
+}
+
+export interface CoherenceSimulationStatus {
+  running: boolean;
+  vectorsProcessed: number;
+  latest: CoherenceSimulationSample | null;
 }
 
 export interface ImageGenerationInput {

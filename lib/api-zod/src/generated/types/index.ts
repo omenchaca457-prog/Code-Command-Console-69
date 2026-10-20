@@ -22,6 +22,8 @@ export * from "./aiMessageRole";
 export * from "./clearTerminalMessagesConversationId";
 export * from "./clearTerminalMessagesParams";
 export * from "./clearTerminalMessagesResponse";
+export * from "./coherenceSimulationSample";
+export * from "./coherenceSimulationStatus";
 export * from "./createSnippetBody";
 export * from "./deepSeekChatInput";
 export * from "./executeRequest";
