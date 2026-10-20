@@ -348,6 +348,18 @@ describe("coherence simulation route", () => {
       const fractionalPageResponse = await fetch(`${baseUrl}/api/coherence-simulation/logs/page?page=1.5`);
       assert.equal(fractionalPageResponse.status, 400);
       assert.deepEqual(requestedPages, [{ page: 2, pageSize: 10 }]);
+
+      for (const pageSize of ["0", "101", "1.5"]) {
+        const invalidPageSizeResponse = await fetch(
+          `${baseUrl}/api/coherence-simulation/logs/page?pageSize=${pageSize}`,
+        );
+        assert.equal(invalidPageSizeResponse.status, 400, `pageSize=${pageSize} debe rechazarse`);
+        assert.deepEqual(
+          requestedPages,
+          [{ page: 2, pageSize: 10 }],
+          `pageSize=${pageSize} no debe consultar el historial`,
+        );
+      }
     });
   });
 
