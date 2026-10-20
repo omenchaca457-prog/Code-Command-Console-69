@@ -244,27 +244,16 @@ describe("coherence simulator", () => {
 describe("coherence simulation route", () => {
   it("lists persisted logs with cursor pagination and rejects invalid limits", async () => {
     const { simulator } = createTestSimulator();
-    const requestedPages: Array<{ limit: number; beforeId?: number }> = [];
+    const requestedPages: Array<{ page: number; pageSize: number; snapshotId?: number }> = [];
     const router = createCoherenceSimulationRouter({
       simulator,
-      loadLogs: async (limit, beforeId) => {
-        requestedPages.push({ limit, beforeId });
-        return {
-          items: [{
-            id: 8,
-            vector: "1234",
-            coherence: 99.9,
-            turbulence: "1",
-            vectorsProcessed: 100,
-            createdAt: new Date("2026-10-20T05:00:00.000Z").toISOString(),
-          }],
-          nextBeforeId: 8,
-        };
+      persistSample: async (sample) => {
+        persisted.push(sample);
       },
     });
 
     await withServer(router, async (baseUrl) => {
-      const response = await fetch(`${baseUrl}/api/coherence-simulation/logs?limit=1&beforeId=10`);
+        const response = await fetch(`${baseUrl}/api/coherence-simulation/logs/page?${query}`);
       assert.equal(response.status, 200);
       assert.deepEqual(await response.json(), {
         items: [{
@@ -287,45 +276,12 @@ describe("coherence simulation route", () => {
 
   it("returns page-number history with total count and rejects invalid pagination", async () => {
     const { simulator } = createTestSimulator();
-    const requestedPages: Array<{ page: number; pageSize: number }> = [];
+    const requestedPages: Array<{ page: number; pageSize: number; snapshotId?: number }> = [];
     const router = createCoherenceSimulationRouter({
       simulator,
-      listLogs: async (page, pageSize) => {
-        requestedPages.push({ page, pageSize });
-        return {
-          items: [
-            {
-              id: page,
-              vector: "1234",
-              coherence: 99.9,
-              turbulence: "1234",
-              vectorsProcessed: 50,
-              createdAt: new Date("2026-10-20T12:00:00.000Z"),
-            },
-          ],
-          page,
-          pageSize,
-          total: 21,
-          snapshotId: 21,
-        };
+      persistSample: async (sample) => {
+        persisted.push(sample);
       },
-      parseLogsQuery: async (query) => {
-        if (typeof query !== "object" || query === null) {
-          return { success: false, error: { message: "Invalid query" } };
-        }
-        const values = query as Record<string, unknown>;
-        const page = Number(values.page ?? 1);
-        const pageSize = Number(values.pageSize ?? 20);
-        if (
-          !Number.isSafeInteger(page) || page < 1
-          || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100
-          || !Number.isSafeInteger((page - 1) * pageSize)
-        ) {
-          return { success: false, error: { message: "Invalid pagination" } };
-        }
-        return { success: true, data: { page, pageSize } };
-      },
-      parseLogsPage: async (page) => page,
     });
 
     await withServer(router, async (baseUrl) => {
@@ -352,6 +308,10 @@ describe("coherence simulation route", () => {
       const invalidPageResponse = await fetch(`${baseUrl}/api/coherence-simulation/logs/page?page=0`);
       assert.equal(invalidPageResponse.status, 400);
       const fractionalPageResponse = await fetch(`${baseUrl}/api/coherence-simulation/logs/page?page=1.5`);
+
+      const acceptedMaxOffsetResponse = await fetch(
+        `${baseUrl}/api/coherence-simulation/logs/page?page=50001&pageSize=20`,
+      );
       assert.equal(fractionalPageResponse.status, 400);
       const oversizedPageResponse = await fetch(
         `${baseUrl}/api/coherence-simulation/logs/page?page=1e100&pageSize=100`,
@@ -366,7 +326,10 @@ describe("coherence simulation route", () => {
         assert.equal(invalidPageSizeResponse.status, 400, `pageSize=${pageSize} debe rechazarse`);
         assert.deepEqual(
           requestedPages,
-          [{ page: 2, pageSize: 10 }],
+          [
+            { page: 2, pageSize: 10 },
+            { page: 50001, pageSize: 20 },
+          ],
           `pageSize=${pageSize} no debe consultar el historial`,
         );
       }
@@ -383,6 +346,7 @@ describe("coherence simulation route", () => {
         acceptedBoundaryPages.push({ page: 1, pageSize });
         assert.deepEqual(requestedPages, [
           { page: 2, pageSize: 10 },
+          { page: 50001, pageSize: 20 },
           ...acceptedBoundaryPages,
         ]);
       }
@@ -409,40 +373,9 @@ describe("coherence simulation route", () => {
     const requestedPages: Array<{ page: number; pageSize: number; snapshotId?: number }> = [];
     const router = createCoherenceSimulationRouter({
       simulator,
-      listLogs: async (page, pageSize, snapshotId) => {
-        requestedPages.push({ page, pageSize, ...(snapshotId === undefined ? {} : { snapshotId }) });
-        const boundaryId = snapshotId ?? Math.max(...storedLogs.map((log) => log.id));
-        const orderedLogs = [...storedLogs].sort(
-          (left, right) =>
-            right.createdAt.getTime() - left.createdAt.getTime() || right.id - left.id,
-        );
-        const snapshotLogs = orderedLogs.filter((log) => log.id <= boundaryId);
-        return {
-          items: snapshotLogs.slice((page - 1) * pageSize, page * pageSize),
-          page,
-          pageSize,
-          total: snapshotLogs.length,
-          snapshotId: boundaryId,
-        };
+      persistSample: async (sample) => {
+        persisted.push(sample);
       },
-      parseLogsQuery: async (query) => {
-        if (typeof query !== "object" || query === null) {
-          return { success: false, error: { message: "Invalid query" } };
-        }
-        const values = query as Record<string, unknown>;
-        const page = Number(values.page ?? 1);
-        const pageSize = Number(values.pageSize ?? 20);
-        const snapshotId = values.snapshotId === undefined ? undefined : Number(values.snapshotId);
-        if (
-          !Number.isSafeInteger(page) || page < 1
-          || !Number.isSafeInteger(pageSize) || pageSize < 1
-          || (snapshotId !== undefined && (!Number.isSafeInteger(snapshotId) || snapshotId < 1))
-        ) {
-          return { success: false, error: { message: "Invalid pagination" } };
-        }
-        return { success: true, data: { page, pageSize, ...(snapshotId === undefined ? {} : { snapshotId }) } };
-      },
-      parseLogsPage: async (page) => page,
     });
 
     await withServer(router, async (baseUrl) => {
@@ -569,3 +502,7 @@ describe("coherence simulation route", () => {
     });
   });
 });
+
+        const outOfRangeResponse = await fetch(
+          `${baseUrl}/api/coherence-simulation/logs/page?${query}`,
+        );

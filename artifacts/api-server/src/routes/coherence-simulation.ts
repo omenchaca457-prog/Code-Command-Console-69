@@ -44,6 +44,8 @@ type LogsQueryParseResult =
   | { success: true; data: { page: number; pageSize: number; snapshotId?: number } }
   | { success: false; error: { message: string } };
 
+const MAX_SIMULATION_LOG_OFFSET = 1_000_000;
+
 function hasSafePageOffset(page: number, pageSize: number): boolean {
   return Number.isSafeInteger(page)
     && page >= 1
@@ -175,6 +177,12 @@ export function createCoherenceSimulationRouter({
     }
     if (!hasSafePageOffset(parsed.data.page, parsed.data.pageSize)) {
       res.status(400).json({ error: "page and pageSize must produce a safe offset" });
+      return;
+    }
+
+    const offset = (parsed.data.page - 1) * parsed.data.pageSize;
+    if (!Number.isSafeInteger(offset) || offset > MAX_SIMULATION_LOG_OFFSET) {
+      res.status(400).json({ error: "La página solicitada supera el rango permitido." });
       return;
     }
 
