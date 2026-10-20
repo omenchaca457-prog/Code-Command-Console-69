@@ -15,8 +15,8 @@ export function HistoryPagination({
   onPageChange,
 }: HistoryPaginationProps) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[.08] px-5 py-3 sm:px-6">
-      <span className="font-mono text-[10px] text-[#75818d]" data-testid="text-history-page">
+    <nav aria-label="Paginación del historial" lang="es" className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[.08] px-5 py-3 sm:px-6">
+      <span role="status" aria-live="polite" aria-atomic="true" className="font-mono text-[10px] text-[#75818d]" data-testid="text-history-page">
         Página {page} de {pageCount}
       </span>
       <div className="flex gap-2">
@@ -41,6 +41,6 @@ export function HistoryPagination({
           Siguiente <ChevronRight className="h-3.5 w-3.5" aria-hidden />
         </button>
       </div>
-    </div>
+    </nav>
   );
 }

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { createElement, isValidElement, type ReactElement, type ReactNode } from "react";
+import { describe, it, type TestContext } from "node:test";
+import { act, createElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { JSDOM } from "jsdom";
+import { getByRole } from "@testing-library/dom";
+import { userEvent } from "@testing-library/user-event";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { HistoryPagination } from "./history-pagination.tsx";
 import { HistoryRefreshButton, HistoryRequestFeedback } from "./history-request-feedback.tsx";
@@ -71,6 +74,145 @@ describe("history pagination controls", () => {
   it("disables both controls while a page request is in progress", () => {
     const buttons = renderButtons(2, 3, () => undefined, true);
     assert.deepEqual(buttons.map((button) => button.props.disabled), [true, true]);
+  });
+});
+
+// Exercise native button behavior through DOM events, not direct onClick calls.
+async function mountPagination(t: TestContext, page = 2, pageCount = 3) {
+  const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>");
+  const globals = {
+    window: dom.window,
+    document: dom.window.document,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  };
+  const originalGlobals = new Map(
+    Object.keys(globals).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
+  );
+  for (const [key, value] of Object.entries(globals)) {
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+  }
+  const { createRoot } = await import("react-dom/client");
+  const container = dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  t.after(async () => {
+    try {
+      await act(async () => root.unmount());
+    } finally {
+      dom.window.close();
+      for (const [key, descriptor] of originalGlobals) {
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+        else Reflect.deleteProperty(globalThis, key);
+      }
+    }
+  });
+  const requestedPages: number[] = [];
+  const render = async (currentPage: number, isFetching = false) => {
+    await act(async () => root.render(createElement(HistoryPagination, {
+      page: currentPage,
+      pageCount,
+      isFetching,
+      onPageChange: (nextPage) => requestedPages.push(nextPage),
+    })));
+  };
+  await render(page);
+  return {
+    container,
+    document: dom.window.document,
+    user: userEvent.setup({ document: dom.window.document }),
+    requestedPages,
+    render,
+    previous: getByRole(container, "button", { name: "Página anterior del historial" }) as HTMLButtonElement,
+    next: getByRole(container, "button", { name: "Página siguiente del historial" }) as HTMLButtonElement,
+  };
+}
+
+describe("history pagination accessibility", () => {
+  it("supports Tab and Shift+Tab, and activates both directions with Enter and Space", async (t) => {
+    const { user, document, previous, next, requestedPages } = await mountPagination(t);
+    assert.equal(previous.type, "button");
+    assert.equal(next.type, "button");
+    await user.tab();
+    assert.equal(document.activeElement, previous);
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+    await user.tab();
+    assert.equal(document.activeElement, next);
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+    assert.deepEqual(requestedPages, [1, 1, 3, 3]);
+    await user.tab({ shift: true });
+    assert.equal(document.activeElement, previous);
+    for (const button of [previous, next]) {
+      assert.match(button.className, /focus-visible:ring-2/);
+      assert.equal(button.querySelector("svg")?.getAttribute("aria-hidden"), "true");
+    }
+  });
+
+  it("keeps the complete current page announcement in a polite, atomic status region", async (t) => {
+    const { container, render } = await mountPagination(t, 1);
+    const navigation = getByRole(container, "navigation", { name: "Paginación del historial" });
+    assert.equal(navigation.getAttribute("lang"), "es");
+    const status = getByRole(navigation, "status");
+    assert.equal(status.getAttribute("aria-live"), "polite");
+    assert.equal(status.getAttribute("aria-atomic"), "true");
+    assert.equal(status.textContent, "Página 1 de 3");
+    await render(2);
+    assert.equal(getByRole(navigation, "status"), status, "Keep the live region mounted when pages change");
+    assert.equal(status.textContent, "Página 2 de 3");
+    await render(3);
+    assert.equal(status.textContent, "Página 3 de 3");
+  });
+
+  for (const page of [1, 3]) {
+    it(`exposes the disabled boundary and skips it in the tab order on page ${page}`, async (t) => {
+      const { user, document, previous, next, requestedPages } = await mountPagination(t, page);
+      const disabled = page === 1 ? previous : next;
+      const enabled = page === 1 ? next : previous;
+      assert.equal(disabled.disabled, true);
+      assert.equal(disabled.hasAttribute("disabled"), true);
+      assert.equal(enabled.disabled, false);
+      await user.tab();
+      assert.equal(document.activeElement, enabled);
+      await user.keyboard("{Enter}");
+      assert.deepEqual(requestedPages, [2]);
+      await user.tab();
+      assert.equal(document.activeElement, document.body);
+      disabled.focus();
+      assert.equal(document.activeElement, document.body);
+      await user.click(disabled);
+      assert.deepEqual(requestedPages, [2], "Disabled controls must not navigate");
+    });
+  }
+
+  it("disables both controls on a single page and leaves no keyboard navigation targets", async (t) => {
+    const { container, user, document, previous, next, requestedPages } = await mountPagination(t, 1, 1);
+    assert.equal(getByRole(container, "status").textContent, "Página 1 de 1");
+    assert.equal(previous.disabled, true);
+    assert.equal(next.disabled, true);
+    await user.tab();
+    assert.equal(document.activeElement, document.body);
+    await user.keyboard("{Enter} ");
+    await user.click(previous);
+    await user.click(next);
+    assert.deepEqual(requestedPages, []);
+  });
+
+  it("blocks mouse and keyboard navigation while fetching, then restores keyboard access", async (t) => {
+    const { user, document, previous, next, requestedPages, render } = await mountPagination(t);
+    await render(2, true);
+    assert.equal(previous.disabled, true);
+    assert.equal(next.disabled, true);
+    await user.tab();
+    assert.equal(document.activeElement, document.body);
+    await user.keyboard("{Enter} ");
+    await user.click(previous);
+    await user.click(next);
+    assert.deepEqual(requestedPages, []);
+    await render(2, false);
+    await user.tab();
+    assert.equal(document.activeElement, previous);
+    await user.keyboard("{Enter}");
+    assert.deepEqual(requestedPages, [1]);
   });
 });
 
