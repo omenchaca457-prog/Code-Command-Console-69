@@ -199,6 +199,37 @@ paths:
         "400":
           description: Invalid pagination parameters
 
+  /coherence-simulation/logs/page:
+    get:
+      operationId: listCoherenceSimulationLogPages
+      tags: [simulation]
+      summary: List saved coherence simulation logs by page
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: A page of saved simulation logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoherenceSimulationLogOffsetPage"
+        "400":
+          description: Invalid pagination parameters
+
   /openai/image:
     post:
       operationId: generateOpenAiImage
@@ -679,6 +710,20 @@ components:
           oneOf:
             - type: integer
             - type: "null"
+    CoherenceSimulationLogOffsetPage:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoherenceSimulationLog"
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
 
     ImageGenerationInput:
       type: object

@@ -25,6 +25,7 @@ import type {
   AiImproveRequest,
   ClearTerminalMessagesParams,
   ClearTerminalMessagesResponse,
+  CoherenceSimulationLogOffsetPage,
   CoherenceSimulationLogPage,
   CoherenceSimulationStatus,
   CreateSnippetBody,
@@ -36,6 +37,7 @@ import type {
   ImageGenerationInput,
   ImageGenerationResult,
   LanguageList,
+  ListCoherenceSimulationLogPagesParams,
   ListCoherenceSimulationLogsParams,
   NeuralEvent,
   NeuralEventInput,
@@ -958,6 +960,116 @@ export function useListCoherenceSimulationLogs<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListCoherenceSimulationLogsQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List saved coherence simulation logs by page
+ */
+export const getListCoherenceSimulationLogPagesUrl = (
+  params?: ListCoherenceSimulationLogPagesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/coherence-simulation/logs/page?${stringifiedParams}`
+    : `/api/coherence-simulation/logs/page`;
+};
+
+export const listCoherenceSimulationLogPages = async (
+  params?: ListCoherenceSimulationLogPagesParams,
+  options?: RequestInit,
+): Promise<CoherenceSimulationLogOffsetPage> => {
+  return customFetch<CoherenceSimulationLogOffsetPage>(
+    getListCoherenceSimulationLogPagesUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListCoherenceSimulationLogPagesQueryKey = (
+  params?: ListCoherenceSimulationLogPagesParams,
+) => {
+  return [
+    `/api/coherence-simulation/logs/page`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListCoherenceSimulationLogPagesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCoherenceSimulationLogPages>>,
+  TError = ErrorType<void>,
+>(
+  params?: ListCoherenceSimulationLogPagesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCoherenceSimulationLogPages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getListCoherenceSimulationLogPagesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCoherenceSimulationLogPages>>
+  > = ({ signal }) =>
+    listCoherenceSimulationLogPages(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCoherenceSimulationLogPages>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCoherenceSimulationLogPagesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCoherenceSimulationLogPages>>
+>;
+export type ListCoherenceSimulationLogPagesQueryError = ErrorType<void>;
+
+/**
+ * @summary List saved coherence simulation logs by page
+ */
+
+export function useListCoherenceSimulationLogPages<
+  TData = Awaited<ReturnType<typeof listCoherenceSimulationLogPages>>,
+  TError = ErrorType<void>,
+>(
+  params?: ListCoherenceSimulationLogPagesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCoherenceSimulationLogPages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCoherenceSimulationLogPagesQueryOptions(
     params,
     options,
   );

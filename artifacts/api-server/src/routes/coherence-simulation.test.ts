@@ -218,6 +218,72 @@ describe("coherence simulation route", () => {
     });
   });
 
+  it("returns page-number history with total count and rejects invalid pagination", async () => {
+    const { simulator } = createTestSimulator();
+    const requestedPages: Array<{ page: number; pageSize: number }> = [];
+    const router = createCoherenceSimulationRouter({
+      simulator,
+      listLogs: async (page, pageSize) => {
+        requestedPages.push({ page, pageSize });
+        return {
+          items: [
+            {
+              id: page,
+              vector: "1234",
+              coherence: 99.9,
+              turbulence: "1234",
+              vectorsProcessed: 50,
+              createdAt: new Date("2026-10-20T12:00:00.000Z"),
+            },
+          ],
+          page,
+          pageSize,
+          total: 21,
+        };
+      },
+      parseLogsQuery: async (query) => {
+        if (typeof query !== "object" || query === null) {
+          return { success: false, error: { message: "Invalid query" } };
+        }
+        const values = query as Record<string, unknown>;
+        const page = Number(values.page ?? 1);
+        const pageSize = Number(values.pageSize ?? 20);
+        if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+          return { success: false, error: { message: "Invalid pagination" } };
+        }
+        return { success: true, data: { page, pageSize } };
+      },
+      parseLogsPage: async (page) => page,
+    });
+
+    await withServer(router, async (baseUrl) => {
+      const pageResponse = await fetch(`${baseUrl}/api/coherence-simulation/logs/page?page=2&pageSize=10`);
+      assert.equal(pageResponse.status, 200);
+      assert.deepEqual(await pageResponse.json(), {
+        items: [
+          {
+            id: 2,
+            vector: "1234",
+            coherence: 99.9,
+            turbulence: "1234",
+            vectorsProcessed: 50,
+            createdAt: "2026-10-20T12:00:00.000Z",
+          },
+        ],
+        page: 2,
+        pageSize: 10,
+        total: 21,
+      });
+      assert.deepEqual(requestedPages, [{ page: 2, pageSize: 10 }]);
+
+      const invalidPageResponse = await fetch(`${baseUrl}/api/coherence-simulation/logs/page?page=0`);
+      assert.equal(invalidPageResponse.status, 400);
+      const fractionalPageResponse = await fetch(`${baseUrl}/api/coherence-simulation/logs/page?page=1.5`);
+      assert.equal(fractionalPageResponse.status, 400);
+      assert.deepEqual(requestedPages, [{ page: 2, pageSize: 10 }]);
+    });
+  });
+
   it("serves control states and the status/sample SSE frames using isolated dependencies", async () => {
     const { clock, simulator } = createTestSimulator();
     const persisted: CoherenceSample[] = [];

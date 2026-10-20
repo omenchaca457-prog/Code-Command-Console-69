@@ -125,6 +125,13 @@ export interface CoherenceSimulationLogPage {
   nextBeforeId: number | null;
 }
 
+export interface CoherenceSimulationLogOffsetPage {
+  items: CoherenceSimulationLog[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
 export interface ImageGenerationInput {
   /**
    * @minLength 1
@@ -327,6 +334,18 @@ export type ListCoherenceSimulationLogsParams = {
    * @minimum 1
    */
   beforeId?: number;
+};
+
+export type ListCoherenceSimulationLogPagesParams = {
+  /**
+   * @minimum 1
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
 };
 
 export type GetTerminalMessagesParams = {
