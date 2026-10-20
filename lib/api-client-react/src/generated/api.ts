@@ -25,6 +25,7 @@ import type {
   AiImproveRequest,
   ClearTerminalMessagesParams,
   ClearTerminalMessagesResponse,
+  CoherenceSimulationLogPage,
   CoherenceSimulationStatus,
   CreateSnippetBody,
   DeepSeekChatInput,
@@ -35,6 +36,7 @@ import type {
   ImageGenerationInput,
   ImageGenerationResult,
   LanguageList,
+  ListCoherenceSimulationLogsParams,
   NeuralEvent,
   NeuralEventInput,
   Snippet,
@@ -857,6 +859,115 @@ export const useStopCoherenceSimulation = <
 > => {
   return useMutation(getStopCoherenceSimulationMutationOptions(options));
 };
+
+/**
+ * @summary List saved synthetic simulation logs
+ */
+export const getListCoherenceSimulationLogsUrl = (
+  params?: ListCoherenceSimulationLogsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/coherence-simulation/logs?${stringifiedParams}`
+    : `/api/coherence-simulation/logs`;
+};
+
+export const listCoherenceSimulationLogs = async (
+  params?: ListCoherenceSimulationLogsParams,
+  options?: RequestInit,
+): Promise<CoherenceSimulationLogPage> => {
+  return customFetch<CoherenceSimulationLogPage>(
+    getListCoherenceSimulationLogsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListCoherenceSimulationLogsQueryKey = (
+  params?: ListCoherenceSimulationLogsParams,
+) => {
+  return [
+    `/api/coherence-simulation/logs`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListCoherenceSimulationLogsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listCoherenceSimulationLogs>>,
+  TError = ErrorType<void>,
+>(
+  params?: ListCoherenceSimulationLogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCoherenceSimulationLogs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListCoherenceSimulationLogsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listCoherenceSimulationLogs>>
+  > = ({ signal }) =>
+    listCoherenceSimulationLogs(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listCoherenceSimulationLogs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListCoherenceSimulationLogsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listCoherenceSimulationLogs>>
+>;
+export type ListCoherenceSimulationLogsQueryError = ErrorType<void>;
+
+/**
+ * @summary List saved synthetic simulation logs
+ */
+
+export function useListCoherenceSimulationLogs<
+  TData = Awaited<ReturnType<typeof listCoherenceSimulationLogs>>,
+  TError = ErrorType<void>,
+>(
+  params?: ListCoherenceSimulationLogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listCoherenceSimulationLogs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListCoherenceSimulationLogsQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Generate an image with GPT-Image-2.5

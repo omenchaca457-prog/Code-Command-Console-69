@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { desc, lt } from "drizzle-orm";
 import {
   getSimulationStatus,
   startSimulation,
@@ -11,6 +12,21 @@ import {
 type CoherenceSimulationRouteDependencies = {
   simulator?: CoherenceSimulator;
   persistSample?: (sample: CoherenceSample) => Promise<void>;
+  loadLogs?: (limit: number, beforeId?: number) => Promise<SimulationLogPage>;
+};
+
+type SimulationLogItem = {
+  id: number;
+  vector: string;
+  coherence: number;
+  turbulence: string;
+  vectorsProcessed: number;
+  createdAt: string;
+};
+
+type SimulationLogPage = {
+  items: SimulationLogItem[];
+  nextBeforeId: number | null;
 };
 
 const defaultSimulator: CoherenceSimulator = {
@@ -30,11 +46,47 @@ async function persistSimulationSample(sample: CoherenceSample): Promise<void> {
   });
 }
 
+async function loadSimulationLogs(limit: number, beforeId?: number): Promise<SimulationLogPage> {
+  const { db, simulationLogsTable } = await import("@workspace/db");
+  const rows = await db
+    .select()
+    .from(simulationLogsTable)
+    .where(beforeId === undefined ? undefined : lt(simulationLogsTable.id, beforeId))
+    .orderBy(desc(simulationLogsTable.id))
+    .limit(limit + 1);
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+
+  return {
+    items: page.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() })),
+    nextBeforeId: hasMore ? page.at(-1)?.id ?? null : null,
+  };
+}
+
 export function createCoherenceSimulationRouter({
   simulator = defaultSimulator,
   persistSample = persistSimulationSample,
+  loadLogs = loadSimulationLogs,
 }: CoherenceSimulationRouteDependencies = {}) {
   const router = Router();
+
+  router.get("/coherence-simulation/logs", async (req, res): Promise<void> => {
+    const rawLimit = req.query.limit;
+    const rawBeforeId = req.query.beforeId;
+    const limit = rawLimit === undefined ? 20 : Number(rawLimit);
+    const beforeId = rawBeforeId === undefined ? undefined : Number(rawBeforeId);
+
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      res.status(400).json({ error: "El límite debe ser un entero entre 1 y 100." });
+      return;
+    }
+    if (beforeId !== undefined && (!Number.isSafeInteger(beforeId) || beforeId < 1)) {
+      res.status(400).json({ error: "El cursor debe ser un ID positivo válido." });
+      return;
+    }
+
+    res.json(await loadLogs(limit, beforeId));
+  });
 
   router.get("/coherence-simulation/status", (_req, res) => {
     res.json(simulator.getSimulationStatus());

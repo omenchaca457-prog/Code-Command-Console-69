@@ -169,6 +169,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/CoherenceSimulationStatus"
 
+  /coherence-simulation/logs:
+    get:
+      operationId: listCoherenceSimulationLogs
+      tags: [simulation]
+      summary: List saved synthetic simulation logs
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: beforeId
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Most recent persisted logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoherenceSimulationLogPage"
+        "400":
+          description: Invalid pagination parameters
+
   /openai/image:
     post:
       operationId: generateOpenAiImage
@@ -619,6 +649,35 @@ components:
         latest:
           oneOf:
             - $ref: "#/components/schemas/CoherenceSimulationSample"
+            - type: "null"
+    CoherenceSimulationLog:
+      type: object
+      required: [id, vector, coherence, turbulence, vectorsProcessed, createdAt]
+      properties:
+        id:
+          type: integer
+        vector:
+          type: string
+        coherence:
+          type: number
+        turbulence:
+          type: string
+        vectorsProcessed:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    CoherenceSimulationLogPage:
+      type: object
+      required: [items, nextBeforeId]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoherenceSimulationLog"
+        nextBeforeId:
+          oneOf:
+            - type: integer
             - type: "null"
 
     ImageGenerationInput:

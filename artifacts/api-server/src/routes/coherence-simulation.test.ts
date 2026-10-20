@@ -175,6 +175,49 @@ describe("coherence simulator", () => {
 });
 
 describe("coherence simulation route", () => {
+  it("lists persisted logs with cursor pagination and rejects invalid limits", async () => {
+    const { simulator } = createTestSimulator();
+    const requestedPages: Array<{ limit: number; beforeId?: number }> = [];
+    const router = createCoherenceSimulationRouter({
+      simulator,
+      loadLogs: async (limit, beforeId) => {
+        requestedPages.push({ limit, beforeId });
+        return {
+          items: [{
+            id: 8,
+            vector: "1234",
+            coherence: 99.9,
+            turbulence: "1",
+            vectorsProcessed: 100,
+            createdAt: new Date("2026-10-20T05:00:00.000Z").toISOString(),
+          }],
+          nextBeforeId: 8,
+        };
+      },
+    });
+
+    await withServer(router, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/coherence-simulation/logs?limit=1&beforeId=10`);
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        items: [{
+          id: 8,
+          vector: "1234",
+          coherence: 99.9,
+          turbulence: "1",
+          vectorsProcessed: 100,
+          createdAt: "2026-10-20T05:00:00.000Z",
+        }],
+        nextBeforeId: 8,
+      });
+      assert.deepEqual(requestedPages, [{ limit: 1, beforeId: 10 }]);
+
+      const invalid = await fetch(`${baseUrl}/api/coherence-simulation/logs?limit=101`);
+      assert.equal(invalid.status, 400);
+      assert.equal(requestedPages.length, 1);
+    });
+  });
+
   it("serves control states and the status/sample SSE frames using isolated dependencies", async () => {
     const { clock, simulator } = createTestSimulator();
     const persisted: CoherenceSample[] = [];

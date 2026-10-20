@@ -111,6 +111,20 @@ export interface CoherenceSimulationStatus {
   latest: CoherenceSimulationSample | null;
 }
 
+export interface CoherenceSimulationLog {
+  id: number;
+  vector: string;
+  coherence: number;
+  turbulence: string;
+  vectorsProcessed: number;
+  createdAt: string;
+}
+
+export interface CoherenceSimulationLogPage {
+  items: CoherenceSimulationLog[];
+  nextBeforeId: number | null;
+}
+
 export interface ImageGenerationInput {
   /**
    * @minLength 1
@@ -302,6 +316,18 @@ export interface ClearTerminalMessagesResponse {
   conversationId: string;
   deletedCount: number;
 }
+
+export type ListCoherenceSimulationLogsParams = {
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
+  /**
+   * @minimum 1
+   */
+  beforeId?: number;
+};
 
 export type GetTerminalMessagesParams = {
   conversation_id: GetTerminalMessagesConversationId;

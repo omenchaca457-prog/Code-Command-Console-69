@@ -147,6 +147,35 @@ export const StopCoherenceSimulationResponse = zod.object({
 });
 
 /**
+ * @summary List saved synthetic simulation logs
+ */
+export const listCoherenceSimulationLogsQueryLimitDefault = 20;
+export const listCoherenceSimulationLogsQueryLimitMax = 100;
+
+export const ListCoherenceSimulationLogsQueryParams = zod.object({
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listCoherenceSimulationLogsQueryLimitMax)
+    .default(listCoherenceSimulationLogsQueryLimitDefault),
+  beforeId: zod.coerce.number().min(1).optional(),
+});
+
+export const ListCoherenceSimulationLogsResponse = zod.object({
+  items: zod.array(
+    zod.object({
+      id: zod.number(),
+      vector: zod.string(),
+      coherence: zod.number(),
+      turbulence: zod.string(),
+      vectorsProcessed: zod.number(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+  nextBeforeId: zod.union([zod.number(), zod.null()]),
+});
+
+/**
  * @summary Generate an image with GPT-Image-2.5
  */
 export const generateOpenAiImageBodyPromptMax = 4000;
