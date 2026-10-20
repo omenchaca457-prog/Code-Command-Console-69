@@ -2,5 +2,6 @@
 - [Agent Ω data quality](agent-omega-quality.md) — Missing evidence is unknown (NULL/N/D), not a measured zero; preserve failure counts without inventing metrics.
 - [Autonomous write notices](autonomous-write-notices.md) — Keep file-write success separate from event persistence and live delivery; avoid unsafe retries.
 - [Cortex agent orchestration](cortex-agent-orchestration.md) — DeepSeek and Gemini analyze in parallel; OpenAI coordinates them and issues the final order.
+- [Runner Ω evidence](runner-omega-evidence.md) — Financial Ω uses the user's formula; execution stability is not proof of laminar trades, Sello S, or stable Ω.
 - [Replit App Storage client](replit-app-storage.md) — Use the Replit SDK with an explicit bucket ID; raw GCS lacks the managed ADC setup.
 - [Stale workspace declarations](stale-workspace-declarations.md) — If a leaf app cannot see an export present in a workspace package source, force-rebuild that package's declarations first.
