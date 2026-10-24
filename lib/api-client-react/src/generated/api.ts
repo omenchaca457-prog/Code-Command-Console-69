@@ -46,6 +46,7 @@ import type {
   Snippet,
   TerminalMessage,
   TerminalMessageInput,
+  TradingStatus,
   UpdateSnippetBody,
 } from "./api.schemas";
 
@@ -57,6 +58,81 @@ type AwaitedInput<T> = PromiseLike<T> | T;
 type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
+/**
+ * @summary Read the Python Máquina 4105 state file
+ */
+export const getGetTradingStatusUrl = () => {
+  return `/api/trading-status`;
+};
+
+export const getTradingStatus = async (
+  options?: RequestInit,
+): Promise<TradingStatus> => {
+  return customFetch<TradingStatus>(getGetTradingStatusUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTradingStatusQueryKey = () => {
+  return [`/api/trading-status`] as const;
+};
+
+export const getGetTradingStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTradingStatus>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getTradingStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTradingStatusQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTradingStatus>>
+  > = ({ signal }) => getTradingStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTradingStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTradingStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTradingStatus>>
+>;
+export type GetTradingStatusQueryError = ErrorType<void>;
+
+/**
+ * @summary Read the Python Máquina 4105 state file
+ */
+
+export function useGetTradingStatus<
+  TData = Awaited<ReturnType<typeof getTradingStatus>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getTradingStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTradingStatusQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Health check

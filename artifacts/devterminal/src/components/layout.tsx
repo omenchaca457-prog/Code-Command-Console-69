@@ -1,11 +1,16 @@
 import { Link, useLocation } from "wouter";
-import { TerminalSquare, LibrarySquare, Cpu, ShieldAlert, Eye, Play, Network, Bot, Code2, BrainCircuit, Sparkles, Activity } from "lucide-react";
+import { TerminalSquare, LibrarySquare, Cpu, ShieldAlert, Eye, Play, Network, Bot, Code2, BrainCircuit, Sparkles, Activity, TrendingUp } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { useHealthCheck } from "@workspace/api-client-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const activeLocation = location === "/" ? "/" : location.replace(/\/+$/, "");
   const { data: health } = useHealthCheck();
+  const defaultTitle = useRef(document.title);
+  useEffect(() => {
+    document.title = activeLocation === "/trading" ? "MÁQUINA 4105 // TRADING" : defaultTitle.current;
+  }, [activeLocation]);
 
   const navItems = [
     { href: "/", label: "Terminal", icon: TerminalSquare, color: "#ff003c" },
@@ -19,6 +24,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: "/cortex", label: "Cortex IA", icon: BrainCircuit, color: "#00ff41" },
     { href: "/creator", label: "CREATOR", icon: Sparkles, color: "#ff4de1" },
     { href: "/motor", label: "MOTOR 5.5", icon: Activity, color: "#00f0ff" },
+    { href: "/trading", label: "TRADING", icon: TrendingUp, color: "#00f0ff" },
   ];
 
   return (

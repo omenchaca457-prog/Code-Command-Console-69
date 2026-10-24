@@ -6,3 +6,4 @@
 - [Replit App Storage client](replit-app-storage.md) — Use the Replit SDK with an explicit bucket ID; raw GCS lacks the managed ADC setup.
 - [Stale workspace declarations](stale-workspace-declarations.md) — If a leaf app cannot see an export present in a workspace package source, force-rebuild that package's declarations first.
 - [JSX in frontend tests](jsx-test-runtime.md) — The tsx test runner and Vite can use different JSX runtimes; test-imported components need React in scope.
+- [Trading monitor scope](trading-monitor-scope.md) — La Máquina 4105 is the user's Python bot; DevTerminal monitors its state without executing trades.

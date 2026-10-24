@@ -15,6 +15,7 @@ import Agents from "@/pages/agents";
 import Cortex from "@/pages/cortex";
 import Creator from "@/pages/creator";
 import CoherenceSimulator from "@/pages/coherence-simulator";
+import Trading from "@/pages/trading";
 import { Layout } from "@/components/layout";
 import { AppProvider } from "@/lib/app-context";
 import { NeuralProvider } from "@/lib/neural-context";
@@ -33,6 +34,7 @@ const PERSISTENT_PAGES: Array<{ path: string; Component: ComponentType }> = [
   { path: "/cortex", Component: Cortex },
   { path: "/creator", Component: Creator },
   { path: "/motor", Component: CoherenceSimulator },
+  { path: "/trading", Component: Trading },
 ];
 
 function normalizePath(path: string) {

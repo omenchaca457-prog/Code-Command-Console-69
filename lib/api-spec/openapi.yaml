@@ -21,6 +21,20 @@ tags:
   - name: simulation
     description: Synthetic coherence simulation
 paths:
+  /trading-status:
+    get:
+      operationId: getTradingStatus
+      tags: [trading]
+      summary: Read the Python Máquina 4105 state file
+      responses:
+        "200":
+          description: Current state, or offline defaults if the file is absent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradingStatus"
+        "503":
+          description: State file is unreadable or invalid
   /healthz:
     get:
       operationId: healthCheck
@@ -558,6 +572,32 @@ paths:
 
 components:
   schemas:
+    TradingStatus:
+      type: object
+      required: [status, capital, pnl, trades, wins, losses, winrate, position, paused]
+      properties:
+        status:
+          type: string
+        capital:
+          type: number
+        pnl:
+          type: number
+        trades:
+          type: integer
+          minimum: 0
+        wins:
+          type: integer
+          minimum: 0
+        losses:
+          type: integer
+          minimum: 0
+        winrate:
+          type: number
+        position:
+          type: integer
+          enum: [-1, 0, 1]
+        paused:
+          type: boolean
     HealthStatus:
       type: object
       properties:

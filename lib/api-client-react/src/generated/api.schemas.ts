@@ -5,6 +5,30 @@
  * DevTerminal API specification
  * OpenAPI spec version: 0.1.0
  */
+export type TradingStatusPosition =
+  (typeof TradingStatusPosition)[keyof typeof TradingStatusPosition];
+
+export const TradingStatusPosition = {
+  NUMBER_MINUS_1: -1,
+  NUMBER_0: 0,
+  NUMBER_1: 1,
+} as const;
+
+export interface TradingStatus {
+  status: string;
+  capital: number;
+  pnl: number;
+  /** @minimum 0 */
+  trades: number;
+  /** @minimum 0 */
+  wins: number;
+  /** @minimum 0 */
+  losses: number;
+  winrate: number;
+  position: TradingStatusPosition;
+  paused: boolean;
+}
+
 export interface HealthStatus {
   status: string;
 }

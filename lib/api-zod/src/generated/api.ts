@@ -8,6 +8,27 @@
 import * as zod from "zod";
 
 /**
+ * @summary Read the Python Máquina 4105 state file
+ */
+export const getTradingStatusResponseTradesMin = 0;
+
+export const getTradingStatusResponseWinsMin = 0;
+
+export const getTradingStatusResponseLossesMin = 0;
+
+export const GetTradingStatusResponse = zod.object({
+  status: zod.string(),
+  capital: zod.number(),
+  pnl: zod.number(),
+  trades: zod.number().min(getTradingStatusResponseTradesMin),
+  wins: zod.number().min(getTradingStatusResponseWinsMin),
+  losses: zod.number().min(getTradingStatusResponseLossesMin),
+  winrate: zod.number(),
+  position: zod.union([zod.literal(-1), zod.literal(0), zod.literal(1)]),
+  paused: zod.boolean(),
+});
+
+/**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({

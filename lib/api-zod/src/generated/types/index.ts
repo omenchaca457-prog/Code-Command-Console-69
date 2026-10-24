@@ -55,4 +55,6 @@ export * from "./terminalMessageInput";
 export * from "./terminalMessageInputConversationId";
 export * from "./terminalMessageInputRole";
 export * from "./terminalMessageRole";
+export * from "./tradingStatus";
+export * from "./tradingStatusPosition";
 export * from "./updateSnippetBody";
