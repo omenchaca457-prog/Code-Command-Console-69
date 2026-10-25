@@ -14,6 +14,19 @@ type PersistAgentResponseInput = {
   failureReason: string | null;
 };
 
+// LEY 4105: el status es un estado de ciclo de vida, no un resultado de tarea.
+// Solo las transiciones terminales (failed/completed) pueden escribirlo; cualquier
+// valor intermedio preserva el status real para no sobreescribir un "active" explícito.
+function nextAgentStatus(
+  current: string | null | undefined,
+  analysisStatus: AgentAnalysisStatus,
+): string {
+  if (analysisStatus === "failed") return "failed";
+  // Si el nodo fue activado manualmente, no lo degradamos a "completed".
+  if (current === "active") return "active";
+  return "completed";
+}
+
 export async function persistAgentResponse(
   input: PersistAgentResponseInput,
 ) {
@@ -53,6 +66,18 @@ export async function persistAgentResponse(
       };
     }
 
+    // Read the live status BEFORE the upsert so we never clobber an explicit "active".
+    const [currentAgent] = await tx
+      .select({ status: agentsTable.status })
+      .from(agentsTable)
+      .where(eq(agentsTable.id, input.agentId))
+      .limit(1);
+
+    const resolvedStatus = nextAgentStatus(
+      currentAgent?.status ?? null,
+      input.analysisStatus,
+    );
+
     const [agent] = await tx
       .insert(agentsTable)
       .values({
@@ -64,7 +89,8 @@ export async function persistAgentResponse(
         failedTasks: input.analysisStatus === "failed" ? 1 : 0,
         lastOmega: input.omega === null ? null : input.analysisStatus === "failed" ? 0 : 1,
         lastFailure: input.failureReason,
-        status: input.analysisStatus === "failed" ? "failed" : "completed",
+        // Nodo nuevo: nace en su estado terminal resuelto, nunca por default "idle".
+        status: resolvedStatus,
       })
       .onConflictDoUpdate({
         target: agentsTable.id,
@@ -90,7 +116,12 @@ export async function persistAgentResponse(
             ? sql`${agentsTable.successfulTasks}::double precision / (${agentsTable.successfulTasks} + ${agentsTable.failedTasks} + 1)`
             : sql`(${agentsTable.successfulTasks} + 1)::double precision / (${agentsTable.successfulTasks} + ${agentsTable.failedTasks} + 1)`,
           lastFailure: input.failureReason,
-          status: input.analysisStatus === "failed" ? "failed" : "completed",
+          // Preserva "active"; solo degrada en fallo terminal o marca "completed" si no estaba activo.
+          status: sql`CASE
+            WHEN ${input.analysisStatus === "failed" ? sql`TRUE` : sql`FALSE`} THEN 'failed'
+            WHEN ${agentsTable.status} = 'active' THEN 'active'
+            ELSE 'completed'
+          END`,
           updatedAt: new Date(),
         },
       })
