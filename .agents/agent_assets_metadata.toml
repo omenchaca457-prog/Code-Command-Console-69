@@ -28,3 +28,17 @@ mtime_ms = 1791267723156
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:3f5fc43d-49fd-4d23-b4d9-fc1826465840/60e2383e-dfc9-4c87-9a6d-e26cbe93cbe4/165d7a98-3e8e-4bc7-86af-b3c862a05971"
 storage_version_token = "1791267730324551"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "3EjaKXnpt_hRxanUVKxVM"
+uri = "file://docs/claude-code-architecture-handoff.md"
+type = "text"
+title = "Guía de arquitectura para Claude Code"
+description = "Inventario del repo, manifiestos exactos, configuración, esquema Drizzle, endpoints y código completo de módulos clave. Sin valores de secretos ni archivos de estado."
+logical_id = "6e58f612-2c2a-4832-9e2f-6664adaa917a"
+content_hash = "sha256:3984d64d89a9fda9fae20080458ee392ee9d35d9e62ccfba1fb1b95e8e5a9741"
+size = 256216
+mtime_ms = 1792936984434
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:3f5fc43d-49fd-4d23-b4d9-fc1826465840/6e58f612-2c2a-4832-9e2f-6664adaa917a/6bc6a9da-5492-4c6c-aa31-de0942168879"
+storage_version_token = "1792937008540683"
+content_type = "text/markdown"
