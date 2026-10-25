@@ -10,7 +10,7 @@ import {
   buildAgentSystemPrompt,
   evaluateAgentResponse,
 } from "./agent-evaluation";
-import { AgentCircuitBlockedError, AgentTaskValidationError } from "./agent-circuit-breaker";
+import { AgentCircuitBlockedError, AgentTaskValidationError, type AgentCircuitBreaker } from "../lib/agent-circuit-breaker";
 import { agentSwarmCircuit } from "./agent-swarm-circuit";
 import { validateAgentOutput } from "./agent-safety-validation";
 import { recordAgentTaskFailure } from "./agent-task-outcomes";
@@ -21,6 +21,8 @@ import {
 } from "./ai-code-chat";
 
 const router = Router();
+// Reuse the swarm's instance: a second breaker would let other routes bypass OPEN.
+const agentCircuit: AgentCircuitBreaker = agentSwarmCircuit;
 const AGENT_PROVIDER_TIMEOUT_MS = 5_000;
 
 router.use(createAiCodeChatRouter({
@@ -149,9 +151,9 @@ router.post("/ai/chat", async (req, res) => {
   }
 
   try {
-    const result = await agentSwarmCircuit.execute(agentId, async () => {
+    const result = await agentCircuit.execute(agentId, async () => {
       const agentMetrics = buildAgentEvidenceMetrics(context, language);
-      if (agentSwarmCircuit.getSnapshot(agentId).state === "HALF-OPEN" && !agentMetrics.evidence_available) {
+      if (agentCircuit.getSnapshot(agentId).state === "HALF-OPEN" && !agentMetrics.evidence_available) {
         throw new AgentTaskValidationError("La auditoría de recuperación requiere código o métricas verificables.");
       }
       await db
@@ -247,7 +249,7 @@ router.post("/ai/chat", async (req, res) => {
     });
     res.json(result);
   } catch (error) {
-    const circuit = agentSwarmCircuit.getSnapshot(agentId);
+    const circuit = agentCircuit.getSnapshot(agentId);
     const blocked = error instanceof AgentCircuitBlockedError;
     const failure = blocked
       ? error.message

@@ -1,8 +1,40 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { AgentCircuitBreaker, AgentCircuitBlockedError, AgentSafetyViolation, type AgentCircuitTransition } from "./agent-circuit-breaker.ts";
+import { AgentCircuitBreaker, AgentCircuitBlockedError, AgentSafetyViolation, type AgentCircuitTransition } from "../lib/agent-circuit-breaker.ts";
+import * as legacy from "./agent-circuit-breaker.ts";
 
 describe("AgentCircuitBreaker", () => {
+  it("keeps the compatibility import on the same class and error identities", () => {
+    assert.equal(legacy.AgentCircuitBreaker, AgentCircuitBreaker);
+    assert.equal(legacy.AgentCircuitBlockedError, AgentCircuitBlockedError);
+    assert.equal(legacy.AgentSafetyViolation, AgentSafetyViolation);
+  });
+
+  it("defaults to three failures and exactly 30 seconds before one recovery attempt", async () => {
+    let now = 0;
+    let calls = 0;
+    const alerts: AgentCircuitTransition[] = [];
+    const breaker = new AgentCircuitBreaker({
+      now: () => now,
+      onTransition: event => alerts.push(event),
+    });
+    const fail = async () => { calls++; throw new Error("provider failure"); };
+    for (let i = 0; i < 3; i++) await assert.rejects(breaker.execute("optimizer", fail));
+    assert.equal(alerts.length, 1);
+    assert.equal(alerts[0].agentId, "optimizer");
+    assert.equal(alerts[0].state, "OPEN");
+    assert.equal(alerts[0].consecutiveFailures, 3);
+    assert.equal(alerts[0].remainingMs, 30_000);
+    now = 29_999;
+    await assert.rejects(breaker.execute("optimizer", fail), AgentCircuitBlockedError);
+    assert.equal(calls, 3);
+    now = 30_000;
+    assert.equal(breaker.getSnapshot("optimizer").state, "HALF-OPEN");
+    assert.equal(await breaker.execute("optimizer", async () => "recovered"), "recovered");
+    assert.equal(breaker.getSnapshot("optimizer").state, "CLOSED");
+    assert.equal(breaker.getSnapshot("optimizer").consecutiveFailures, 0);
+  });
+
   it("opens on three consecutive failures, blocks side effects, then audits one recovery", async () => {
     let now = 0;
     let calls = 0;

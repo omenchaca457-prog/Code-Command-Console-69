@@ -1,5 +1,5 @@
 import { logger } from "../lib/logger";
-import { AgentCircuitBreaker } from "./agent-circuit-breaker";
+import { AgentCircuitBreaker } from "../lib/agent-circuit-breaker";
 
 /**
  * Shared by AI analyses and synthetic tasks, so neither entry point can bypass
