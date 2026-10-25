@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { eq, desc } from "drizzle-orm";
 import { db, snippetsTable } from "@workspace/db";
+import { createSnippetExecutionRouter } from "./snippet-execution";
 import {
   CreateSnippetBody,
   UpdateSnippetBody,
@@ -10,6 +11,7 @@ import {
 } from "@workspace/api-zod";
 
 const router = Router();
+router.use(createSnippetExecutionRouter());
 
 router.get("/snippets", async (_req, res) => {
   const snippets = await db

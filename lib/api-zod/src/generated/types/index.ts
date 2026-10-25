@@ -50,6 +50,8 @@ export * from "./simulatedAgentAnalysisInputAgentId";
 export * from "./simulatedAgentAnalysisResult";
 export * from "./simulatedAgentAnalysisResultStatus";
 export * from "./snippet";
+export * from "./snippetExecutionResult";
+export * from "./snippetExecutionResultOutput";
 export * from "./terminalMessage";
 export * from "./terminalMessageInput";
 export * from "./terminalMessageInputConversationId";

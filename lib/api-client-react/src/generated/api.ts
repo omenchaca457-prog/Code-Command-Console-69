@@ -44,6 +44,7 @@ import type {
   SimulatedAgentAnalysisInput,
   SimulatedAgentAnalysisResult,
   Snippet,
+  SnippetExecutionResult,
   TerminalMessage,
   TerminalMessageInput,
   TradingStatus,
@@ -58,6 +59,90 @@ type AwaitedInput<T> = PromiseLike<T> | T;
 type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
+/**
+ * @summary Record a simulated snippet execution without running its code
+ */
+export const getExecuteSnippetUrl = (id: number) => {
+  return `/api/snippets/${id}/execute`;
+};
+
+export const executeSnippet = async (
+  id: number,
+  options?: RequestInit,
+): Promise<SnippetExecutionResult> => {
+  return customFetch<SnippetExecutionResult>(getExecuteSnippetUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getExecuteSnippetMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof executeSnippet>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof executeSnippet>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["executeSnippet"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof executeSnippet>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return executeSnippet(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ExecuteSnippetMutationResult = NonNullable<
+  Awaited<ReturnType<typeof executeSnippet>>
+>;
+
+export type ExecuteSnippetMutationError = ErrorType<void>;
+
+/**
+ * @summary Record a simulated snippet execution without running its code
+ */
+export const useExecuteSnippet = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof executeSnippet>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof executeSnippet>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getExecuteSnippetMutationOptions(options));
+};
 
 /**
  * @summary Read the Python Máquina 4105 state file

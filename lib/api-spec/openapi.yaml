@@ -21,6 +21,32 @@ tags:
   - name: simulation
     description: Synthetic coherence simulation
 paths:
+  /snippets/{id}/execute:
+    post:
+      operationId: executeSnippet
+      tags: [snippets]
+      summary: Record a simulated snippet execution without running its code
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 2147483647
+      responses:
+        "200":
+          description: Simulated output and persisted execution timestamp
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnippetExecutionResult"
+        "400":
+          description: Invalid snippet id
+        "404":
+          description: Snippet not found
+        "500":
+          description: Could not persist the simulated execution
   /trading-status:
     get:
       operationId: getTradingStatus
@@ -572,6 +598,24 @@ paths:
 
 components:
   schemas:
+    SnippetExecutionResult:
+      type: object
+      required: [id, success, simulated, output, lastRunAt]
+      properties:
+        id:
+          type: integer
+        success:
+          type: boolean
+          enum: [true]
+        simulated:
+          type: boolean
+          enum: [true]
+        output:
+          type: string
+          enum: ["Hello, DevTerminal!"]
+        lastRunAt:
+          type: string
+          format: date-time
     TradingStatus:
       type: object
       required: [status, capital, pnl, trades, wins, losses, winrate, position, paused]

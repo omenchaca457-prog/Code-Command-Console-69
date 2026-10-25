@@ -8,6 +8,23 @@
 import * as zod from "zod";
 
 /**
+ * @summary Record a simulated snippet execution without running its code
+ */
+export const executeSnippetPathIdMax = 2147483647;
+
+export const ExecuteSnippetParams = zod.object({
+  id: zod.coerce.number().min(1).max(executeSnippetPathIdMax),
+});
+
+export const ExecuteSnippetResponse = zod.object({
+  id: zod.number(),
+  success: zod.literal(true),
+  simulated: zod.literal(true),
+  output: zod.enum(["Hello, DevTerminal!"]),
+  lastRunAt: zod.coerce.date(),
+});
+
+/**
  * @summary Read the Python Máquina 4105 state file
  */
 export const getTradingStatusResponseTradesMin = 0;

@@ -5,6 +5,21 @@
  * DevTerminal API specification
  * OpenAPI spec version: 0.1.0
  */
+export type SnippetExecutionResultOutput =
+  (typeof SnippetExecutionResultOutput)[keyof typeof SnippetExecutionResultOutput];
+
+export const SnippetExecutionResultOutput = {
+  "Hello,_DevTerminal!": "Hello, DevTerminal!",
+} as const;
+
+export interface SnippetExecutionResult {
+  id: number;
+  success: boolean;
+  simulated: boolean;
+  output: SnippetExecutionResultOutput;
+  lastRunAt: string;
+}
+
 export type TradingStatusPosition =
   (typeof TradingStatusPosition)[keyof typeof TradingStatusPosition];
 
