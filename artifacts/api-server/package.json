@@ -24,7 +24,7 @@
     "openai": "^6.35.0",
     "pino": "^9",
     "pino-http": "^10",
-    "ws": "^8.20.0"
+    "ws": "8.21.0"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",

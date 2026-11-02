@@ -7,7 +7,6 @@ import {
 import { serializeSqlRows } from "./deepseek-serialization.ts";
 import { getReplitIntegrationStatus } from "./deepseek-integrations.ts";
 import { getRuntimeDiagnostics } from "../lib/runtime-diagnostics.ts";
-import * as pty from "node-pty";
 import { publishNeuralEvent } from "./neural-event-bus.ts";
 const MAX_ROWS = 20;
 
@@ -62,54 +61,6 @@ async function getWorkspaceSnapshot(): Promise<string> {
       envVariableNames: Object.keys(process.env).filter((key) => /^[A-Z][A-Z0-9_]*$/.test(key)).sort(),
     },
     integrations: "Consulta get_integrations_status para ver el estado disponible, sin credenciales.",
-  });
-}
-
-async function runSafeCommand(commandName: string): Promise<string> {
-  const commands: Record<string, [string, string[]]> = {
-    git_status: ["git", ["status", "--short"]],
-    git_log: ["git", ["log", "--oneline", "-5"]],
-    node_version: ["node", ["--version"]],
-    pnpm_version: ["pnpm", ["--version"]],
-    working_directory: ["pwd", []],
-    project_files: ["ls", ["-la"]],
-  };
-  const spec = commands[commandName];
-  if (!spec) throw new Error("Comando no incluido en la lista segura.");
-  return await new Promise<string>((resolve, reject) => {
-    let output = "";
-    let timedOut = false;
-    const child = pty.spawn(spec[0], spec[1], {
-      name: "xterm-256color",
-      cols: 120,
-      rows: 30,
-      cwd: process.cwd(),
-      env: {
-        PATH: process.env.PATH ?? "/usr/bin:/bin",
-        HOME: process.env.HOME ?? "/tmp",
-        TERM: "xterm-256color",
-      },
-    });
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-    }, 3000);
-    child.onData((chunk) => {
-      output += chunk;
-      if (output.length > 8000) {
-        output = output.slice(0, 8000);
-        child.kill("SIGTERM");
-      }
-    });
-    child.onExit(({ exitCode }) => {
-      clearTimeout(timeout);
-      resolve(JSON.stringify({
-        command: commandName,
-        exitCode,
-        timedOut,
-        output: output.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "").slice(0, 8000),
-      }));
-    });
   });
 }
 
@@ -255,7 +206,12 @@ export function createDeepseekToolExecutor(
     if (name === "get_integrations_status") {
       return JSON.stringify(await getReplitIntegrationStatus());
     }
-    if (name === "run_safe_command") return await runSafeCommand(args.command);
+    if (name === "run_safe_command") {
+      return JSON.stringify({
+        error: "La ejecución de comandos está desactivada por seguridad.",
+        code: "execution_disabled",
+      });
+    }
     return JSON.stringify({ error: `Herramienta no permitida: ${name}` });
   } catch (error) {
     return JSON.stringify({
