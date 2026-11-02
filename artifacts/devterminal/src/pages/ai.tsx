@@ -155,16 +155,18 @@ export default function AI() {
     const parts = text.split(/(```[\s\S]*?```)/g);
     return parts.map((part, i) => {
       if (part.startsWith('```') && part.endsWith('```')) {
-        const content = part.substring(3, part.length - 3);
-        const [lang, ...code] = content.split('\n');
+        const fencedContent = part.slice(3, -3).replace(/^\r?\n/, "");
+        const languageMatch = fencedContent.match(/^([a-zA-Z0-9_+-]*)\r?\n/);
+        const lang = languageMatch?.[1] || "code";
+        const content = languageMatch ? fencedContent.slice(languageMatch[0].length) : fencedContent;
         return (
           <div key={i} className="my-3 border border-[#00ff41]/20 overflow-hidden bg-black">
             <div className="flex justify-between items-center px-3 py-1.5 bg-[#0a0a0a] border-b border-[#00ff41]/15">
-              <span className="text-[10px] font-mono text-[#00ff41]/50 uppercase tracking-wider">{lang || 'code'}</span>
+              <span className="text-[10px] font-mono text-[#00ff41]/50 uppercase tracking-wider">{lang}</span>
               <button
                 className="text-[10px] font-mono text-[#333] hover:text-[#00ff41]/70 tracking-wider uppercase transition-colors"
                 onClick={() => {
-                  navigator.clipboard.writeText(code.join('\n').trim());
+                  void navigator.clipboard.writeText(content.trim());
                   toast({ title: "COPIED" });
                 }}
               >
@@ -172,17 +174,34 @@ export default function AI() {
               </button>
             </div>
             <pre className="p-4 text-xs font-mono text-[#00ff41] overflow-x-auto leading-relaxed" style={{ textShadow: "0 0 4px #00ff4120" }}>
-              <code>{code.join('\n').trim()}</code>
+              <code>{content.trim()}</code>
             </pre>
           </div>
         );
       }
-      let html = part
-        .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#ff003c">$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em style="color:#aaa">$1</em>')
-        .replace(/`(.*?)`/g, '<code style="background:rgba(0,255,65,0.06);color:#00ff41;padding:1px 4px;font-size:11px">$1</code>')
-        .replace(/\n/g, '<br/>');
-      return <span key={i} dangerouslySetInnerHTML={{ __html: html }} />;
+      const tokens = part.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g);
+      return (
+        <span key={i}>
+          {tokens.flatMap((token, tokenIndex) => {
+            const isBold = token.startsWith("**") && token.endsWith("**");
+            const isItalic = !isBold && token.startsWith("*") && token.endsWith("*");
+            const isCode = token.startsWith("`") && token.endsWith("`");
+            const content = isBold ? token.slice(2, -2) : isItalic || isCode ? token.slice(1, -1) : token;
+            const lines = content.split("\n");
+            return lines.flatMap((line, lineIndex) => {
+              const key = `${tokenIndex}-${lineIndex}`;
+              const node = isBold
+                ? <strong key={key} className="text-[#ff003c]">{line}</strong>
+                : isItalic
+                  ? <em key={key} className="text-[#aaa]">{line}</em>
+                  : isCode
+                    ? <code key={key} className="bg-[#00ff41]/10 px-1 text-[11px] text-[#00ff41]">{line}</code>
+                    : <span key={key}>{line}</span>;
+              return lineIndex < lines.length - 1 ? [node, <br key={`${key}-break`} />] : [node];
+            });
+          })}
+        </span>
+      );
     });
   };
 

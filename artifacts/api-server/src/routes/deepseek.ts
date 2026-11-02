@@ -118,26 +118,8 @@ const DEEPSEEK_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "get_integrations_status",
-      description: "Devuelve el snapshot manual más reciente de Integrations de Replit, con fecha de captura; nunca revela credenciales ni lo presenta como tiempo real.",
+      description: "Muestra presencia de configuración de proveedores; no verifica que una conexión funcione y nunca revela credenciales.",
       parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "run_safe_command",
-      description: "Ejecuta únicamente un comando de diagnóstico de solo lectura incluido en la lista segura.",
-      parameters: {
-        type: "object",
-        properties: {
-          command: {
-            type: "string",
-            enum: ["git_status", "git_log", "node_version", "pnpm_version", "working_directory", "project_files"],
-          },
-        },
-        required: ["command"],
-        additionalProperties: false,
-      },
     },
   },
 ];

@@ -8,6 +8,7 @@ import {
   validateExecuteSqlQuery,
   writeProjectCode,
 } from "./deepseek-tool-safety.ts";
+import { executeDeepseekTool } from "./deepseek-tools.ts";
 
 describe("DeepSeek tool permissions", () => {
   it("allows one SELECT against an application table", () => {
@@ -125,14 +126,14 @@ describe("DeepSeek tool permissions", () => {
     }
   });
 
-  it("only accepts fixed, read-only diagnostic commands", () => {
-    assert.deepEqual(
-      validateDeepseekToolArguments("run_safe_command", { command: "git_status" }),
-      { command: "git_status" },
-    );
+  it("rejects the removed process-command tool", async () => {
     assert.throws(
-      () => validateDeepseekToolArguments("run_safe_command", { command: "bash -c rm" }),
-      /lista segura/,
+      () => validateDeepseekToolArguments("run_safe_command", { command: "git_status" }),
+      /Herramienta no permitida/,
+    );
+    assert.deepEqual(
+      JSON.parse(await executeDeepseekTool("run_safe_command", '{"command":"git_status"}')),
+      { error: "La ejecución de comandos está desactivada por seguridad.", code: "execution_disabled" },
     );
     assert.deepEqual(
       validateDeepseekToolArguments("get_runtime_diagnostics", {}),

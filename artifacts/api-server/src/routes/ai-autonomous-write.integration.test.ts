@@ -62,38 +62,6 @@ async function withServer(
   }
 }
 
-function waitForSocketOutput(
-  socket: WebSocket,
-  hasExpectedOutput: (output: string) => boolean,
-  timeoutMs = 5000,
-) {
-  return new Promise<string>((resolve, reject) => {
-    let output = "";
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error(`PTY no produjo la salida esperada. Recibido: ${output}`));
-    }, timeoutMs);
-    const onMessage = (data: WebSocket.RawData) => {
-      output += data.toString();
-      if (hasExpectedOutput(output)) {
-        cleanup();
-        resolve(output);
-      }
-    };
-    const onClose = () => {
-      cleanup();
-      reject(new Error("La sesión PTY se cerró antes de responder."));
-    };
-    const cleanup = () => {
-      clearTimeout(timeout);
-      socket.off("message", onMessage);
-      socket.off("close", onClose);
-    };
-    socket.on("message", onMessage);
-    socket.once("close", onClose);
-  });
-}
-
 async function createFixture() {
   const directory = await mkdtemp(resolve(process.cwd(), "src/routes/.sqai-write-"));
   const target = resolve(directory, "fixture.ts");
@@ -270,7 +238,19 @@ describe("SQ-AI autonomous write integration", () => {
     try {
       await withServer(app, async (baseUrl) => {
         const socket = new WebSocket(`${baseUrl.replace(/^http/, "ws")}/api/terminal/ws`);
-        await once(socket, "open");
+        const ptyStatus = await new Promise<number>((resolve, reject) => {
+          socket.once("unexpected-response", (_request, response) => {
+            response.resume();
+            if (typeof response.statusCode !== "number") {
+              reject(new Error("La respuesta de bloqueo PTY no incluyó status HTTP."));
+              return;
+            }
+            resolve(response.statusCode);
+          });
+          socket.once("open", () => reject(new Error("La ruta PTY se abrió sin autorización.")));
+          socket.once("error", reject);
+        });
+        assert.equal(ptyStatus, 503);
         const streamResponse = await fetch(`${baseUrl}/neural-events/stream?after=0`);
         assert.equal(streamResponse.status, 200);
         const stream = createSseReader(streamResponse);
@@ -312,16 +292,8 @@ describe("SQ-AI autonomous write integration", () => {
         assert.equal(deepseekEvent.eventType, "autonomous_write");
         assert.match(deepseekEvent.content, /fixture\.ts/);
 
-        const ptyOutput = waitForSocketOutput(
-          socket,
-          (output) => output.split("SQAI_PTY_OK").length > 2,
-        );
-        socket.send("echo SQAI_PTY_OK\r");
-        assert.match(await ptyOutput, /SQAI_PTY_OK/);
-        assert.equal(socket.readyState, WebSocket.OPEN);
-
         await stream.cancel();
-        socket.close();
+        socket.terminate();
       }, (server) => {
         const terminalServer = attachTerminalWS(server);
         return () => {

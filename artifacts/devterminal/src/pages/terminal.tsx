@@ -126,7 +126,6 @@ export default function TerminalPage() {
       cursorBlink: true,
       cursorStyle: "block",
       scrollback: 10000,
-      disableStdin: true,
       theme: {
         background: "#080808",
         foreground: "#e0e0e0",
@@ -354,8 +353,8 @@ export default function TerminalPage() {
   return (
     <div className={`flex flex-col bg-[#080808] ${isFullscreen ? "fixed inset-0 z-50" : "h-full"}`}>
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#ff003c]/15 bg-[#060606] flex-shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 px-3 py-2 border-b border-[#ff003c]/15 bg-[#060606] flex-shrink-0">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="flex items-center gap-1.5">
             <TerminalSquare className="h-3.5 w-3.5 text-[#ff003c]" style={{ filter: "drop-shadow(0 0 4px #ff003c)" }} />
             <span className="font-mono text-[11px] font-bold tracking-[0.25em] uppercase text-[#ff003c]" style={{ textShadow: "0 0 8px #ff003c60" }}>
@@ -368,38 +367,38 @@ export default function TerminalPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center justify-end gap-1">
           {showSearch && (
-            <div className="flex items-center gap-1.5 mr-2">
+            <div className="mr-2 flex min-w-0 flex-wrap items-center gap-1.5">
               <input
                 value={searchQuery}
                 onChange={handleSearch}
                 placeholder="Buscar..."
                 autoFocus
-                className="bg-[#040404] border border-[#ff003c]/20 px-2 py-1 font-mono text-[10px] text-[#888] placeholder:text-[#222] focus:outline-none focus:border-[#ff003c]/50 w-40"
+                className="min-h-11 min-w-0 w-24 border border-[#ff003c]/20 bg-[#040404] px-2 font-mono text-[10px] text-[#888] placeholder:text-[#222] focus:outline-none focus:border-[#ff003c]/50 sm:w-40"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") searchRef.current?.findNext(searchQuery);
                   if (e.key === "Escape") { setShowSearch(false); setSearchQuery(""); }
                 }}
               />
-              <button onClick={() => searchRef.current?.findNext(searchQuery)} className="font-mono text-[9px] text-[#444] px-1.5 py-1 border border-[#1a1a1a] hover:text-[#888] hover:border-[#333]">↓</button>
-              <button onClick={() => searchRef.current?.findPrevious(searchQuery)} className="font-mono text-[9px] text-[#444] px-1.5 py-1 border border-[#1a1a1a] hover:text-[#888] hover:border-[#333]">↑</button>
+              <button type="button" aria-label="Buscar coincidencia siguiente" onClick={() => searchRef.current?.findNext(searchQuery)} className="min-h-11 min-w-11 border border-[#1a1a1a] px-1.5 font-mono text-[9px] text-[#444] hover:border-[#333] hover:text-[#888]">↓</button>
+              <button type="button" aria-label="Buscar coincidencia anterior" onClick={() => searchRef.current?.findPrevious(searchQuery)} className="min-h-11 min-w-11 border border-[#1a1a1a] px-1.5 font-mono text-[9px] text-[#444] hover:border-[#333] hover:text-[#888]">↑</button>
             </div>
           )}
           <button
             type="button"
             onClick={handleClearChat}
             disabled={isClearingChat || isDeepSeekThinking}
-            className="flex items-center gap-1 border border-[#ff003c]/20 px-2 py-1 font-mono text-[9px] tracking-widest text-[#ff6680] hover:bg-[#ff003c]/10 disabled:opacity-40"
+            className="flex min-h-11 items-center gap-1 border border-[#ff003c]/20 px-2 font-mono text-[9px] tracking-widest text-[#ff6680] hover:bg-[#ff003c]/10 disabled:opacity-40"
             aria-label="Limpiar Chat"
           >
             <Trash2 className="h-3 w-3" />
             <span>{isClearingChat ? "LIMPIANDO…" : "LIMPIAR CHAT"}</span>
           </button>
-          <button onClick={() => setShowSearch(v => !v)} className={`p-1.5 border transition-colors ${showSearch ? "border-[#ff003c]/30 text-[#ff003c]/60" : "border-transparent text-[#333] hover:text-[#666] hover:border-[#222]"}`}>
+          <button type="button" aria-label="Buscar en el historial" aria-expanded={showSearch} onClick={() => setShowSearch(v => !v)} className={`flex min-h-11 min-w-11 items-center justify-center border transition-colors ${showSearch ? "border-[#ff003c]/30 text-[#ff003c]/60" : "border-transparent text-[#333] hover:text-[#666] hover:border-[#222]"}`}>
             <Search className="h-3 w-3" />
           </button>
-          <button onClick={() => setIsFullscreen(v => !v)} className="p-1.5 border border-transparent text-[#333] hover:text-[#666] hover:border-[#222] transition-colors">
+          <button type="button" aria-label={isFullscreen ? "Salir de pantalla completa" : "Abrir pantalla completa"} onClick={() => setIsFullscreen(v => !v)} className="flex min-h-11 min-w-11 items-center justify-center border border-transparent text-[#333] transition-colors hover:border-[#222] hover:text-[#666]">
             {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
           </button>
         </div>

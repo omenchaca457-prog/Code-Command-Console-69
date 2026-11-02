@@ -30,7 +30,6 @@ export function validateDeepseekToolArguments(
     name === "write_project_file" || name === "write_file" ? ["path", "content"] :
     ["get_neural_activity", "get_runtime_diagnostics", "get_workspace_snapshot",
       "get_library_snapshot", "get_integrations_status"].includes(name) ? [] :
-    name === "run_safe_command" ? ["command"] :
     null;
   if (!allowedKeys) throw new Error(`Herramienta no permitida: ${name}`);
 
@@ -60,11 +59,6 @@ export function validateDeepseekToolArguments(
   }
   const argument = args[allowedKeys[0]!];
   if (typeof argument !== "string") throw new Error("Argumento inválido.");
-  if (name === "run_safe_command" && ![
-    "git_status", "git_log", "node_version", "pnpm_version", "working_directory", "project_files",
-  ].includes(argument)) {
-    throw new Error("Comando no incluido en la lista segura.");
-  }
   if (name === "execute_sql") validateExecuteSqlQuery(argument);
   else validateProjectCodePath(argument);
   return args as Record<string, string>;

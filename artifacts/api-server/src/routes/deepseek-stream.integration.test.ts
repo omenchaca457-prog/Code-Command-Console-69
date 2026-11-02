@@ -316,8 +316,8 @@ describe("SQ-AI simulated streaming route", () => {
               return (async function* () {
                 yield toolCallChunk({
                   id: `call-${requests.length}`,
-                  name: "run_safe_command",
-                  arguments: '{"command":"node_version"}',
+                  name: "get_current_code",
+                  arguments: '{"path":"artifacts/api-server/src/routes/deepseek.ts"}',
                 });
               })();
             },

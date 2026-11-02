@@ -115,6 +115,13 @@ export function createDeepseekToolExecutor(
     name: string,
     rawArguments: string,
   ): Promise<string> {
+  if (name === "run_safe_command") {
+    return JSON.stringify({
+      error: "La ejecución de comandos está desactivada por seguridad.",
+      code: "execution_disabled",
+    });
+  }
+
   let args: Record<string, string>;
   try {
     const parsed: unknown = JSON.parse(rawArguments);
@@ -205,12 +212,6 @@ export function createDeepseekToolExecutor(
     }
     if (name === "get_integrations_status") {
       return JSON.stringify(await getReplitIntegrationStatus());
-    }
-    if (name === "run_safe_command") {
-      return JSON.stringify({
-        error: "La ejecución de comandos está desactivada por seguridad.",
-        code: "execution_disabled",
-      });
     }
     return JSON.stringify({ error: `Herramienta no permitida: ${name}` });
   } catch (error) {
