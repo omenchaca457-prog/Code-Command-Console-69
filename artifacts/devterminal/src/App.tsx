@@ -16,6 +16,7 @@ import Cortex from "@/pages/cortex";
 import Creator from "@/pages/creator";
 import CoherenceSimulator from "@/pages/coherence-simulator";
 import Trading from "@/pages/trading";
+import ToolsCenter from "@/pages/tools-center";
 import { Layout } from "@/components/layout";
 import { AppProvider } from "@/lib/app-context";
 import { NeuralProvider } from "@/lib/neural-context";
@@ -24,6 +25,7 @@ const queryClient = new QueryClient();
 
 const PERSISTENT_PAGES: Array<{ path: string; Component: ComponentType }> = [
   { path: "/", Component: TerminalPage },
+  { path: "/tools-center", Component: ToolsCenter },
   { path: "/editor", Component: Home },
   { path: "/runner", Component: Runner },
   { path: "/snippets", Component: Snippets },

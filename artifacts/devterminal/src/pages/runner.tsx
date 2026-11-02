@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Play, Square, Trash2, Plus, Download, CloudUpload } from "lucide-react";
+import { Play, Square, Trash2, Plus, Download, CloudUpload, ShieldAlert } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -14,6 +14,9 @@ import { useLocation } from "wouter";
 import { useNeuralContext } from "@/lib/neural-context";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+const CODE_EXECUTION_ENABLED = false;
+const EXECUTION_DISABLED_MESSAGE =
+  "La ejecución y la instalación están desactivadas: falta autenticación de usuario y aislamiento de procesos verificado.";
 
 type LangConfig = {
   id: string;
@@ -137,6 +140,10 @@ export default function Runner() {
   }, [createSnippetMutation, queryClient, toast]);
 
   const runPanel = useCallback(async (panel: Panel) => {
+    if (!CODE_EXECUTION_ENABLED) {
+      updatePanel(panel.id, { status: "error", output: EXECUTION_DISABLED_MESSAGE, execTime: null });
+      return;
+    }
     const ctrl = new AbortController();
     abortRefs.current[panel.id] = ctrl;
     updatePanel(panel.id, { status: "running", output: "", execTime: null });
@@ -187,6 +194,10 @@ export default function Runner() {
   const runAll = () => panels.forEach(p => p.status !== "running" && runPanel(p));
 
   const installPackage = async (langId: string, pkg: string) => {
+    if (!CODE_EXECUTION_ENABLED) {
+      toast({ title: "INSTALACIÓN DESACTIVADA", description: EXECUTION_DISABLED_MESSAGE });
+      return;
+    }
     const isNode = langId === "javascript" || langId === "typescript";
     const lang = isNode ? "javascript" : "python";
     toast({ title: `Installing ${pkg}...` });
@@ -216,7 +227,9 @@ export default function Runner() {
         <div className="flex items-center gap-2">
           <button
             onClick={runAll}
-            className="flex items-center gap-1.5 px-3 py-1.5 font-mono text-[10px] tracking-widest uppercase text-black bg-[#22c55e] hover:bg-[#16a34a] transition-all"
+            disabled={!CODE_EXECUTION_ENABLED}
+            title={EXECUTION_DISABLED_MESSAGE}
+            className="flex min-h-11 items-center gap-1.5 px-3 font-mono text-[10px] tracking-widest uppercase text-black bg-[#22c55e] hover:bg-[#16a34a] transition-all disabled:cursor-not-allowed disabled:opacity-35"
             style={{ boxShadow: "0 0 12px #22c55e50" }}
           >
             <Play className="h-3 w-3 fill-current" /> RUN ALL
@@ -247,6 +260,11 @@ export default function Runner() {
             )}
           </div>
         </div>
+      </div>
+
+      <div role="status" className="flex items-start gap-2 border-b border-[#ff003c]/20 bg-[#ff003c]/5 px-4 py-2 font-mono text-[10px] leading-relaxed text-[#ff9aac]">
+        <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ff003c]" aria-hidden="true" />
+        <span>{EXECUTION_DISABLED_MESSAGE} Puedes editar y guardar snippets; los botones de ejecución no inician procesos en el servidor.</span>
       </div>
 
       <ScrollArea className="flex-1">
@@ -353,8 +371,9 @@ function PanelCard({
           </span>
           <button
             onClick={e => { e.stopPropagation(); setShowInstall(v => !v); }}
-            className="p-1 text-[#333] hover:text-[#888] transition-colors"
-            title="Install package"
+            disabled={!CODE_EXECUTION_ENABLED}
+            className="flex h-11 w-11 items-center justify-center text-[#333] transition-colors disabled:cursor-not-allowed disabled:opacity-35"
+            title={EXECUTION_DISABLED_MESSAGE}
           >
             <Download className="h-3 w-3" />
           </button>
@@ -369,7 +388,9 @@ function PanelCard({
           ) : (
             <button
               onClick={e => { e.stopPropagation(); onRun(); }}
-              className="flex items-center gap-1 px-2 py-0.5 font-mono text-[9px] tracking-wider uppercase transition-all"
+              disabled={!CODE_EXECUTION_ENABLED}
+              title={EXECUTION_DISABLED_MESSAGE}
+              className="flex min-h-11 items-center gap-1 px-3 font-mono text-[9px] tracking-wider uppercase transition-all disabled:cursor-not-allowed disabled:opacity-35"
               style={{ color: lang.color, border: `1px solid ${lang.color}40`, background: `${lang.color}08` }}
             >
               <Play className="h-2.5 w-2.5 fill-current" /> RUN
@@ -401,10 +422,11 @@ function PanelCard({
           <input
             value={installPkg}
             onChange={e => setInstallPkg(e.target.value)}
+            disabled={!CODE_EXECUTION_ENABLED}
             placeholder={lang.id === "python" ? "pip package name..." : "npm package name..."}
             className="flex-1 bg-transparent font-mono text-xs text-[#aaa] placeholder:text-[#2a2a2a] focus:outline-none"
             onKeyDown={e => {
-              if (e.key === "Enter" && installPkg.trim()) {
+              if (CODE_EXECUTION_ENABLED && e.key === "Enter" && installPkg.trim()) {
                 onInstall(lang.id, installPkg.trim());
                 setInstallPkg("");
                 setShowInstall(false);
@@ -413,6 +435,8 @@ function PanelCard({
           />
           <button
             onClick={() => { if (installPkg.trim()) { onInstall(lang.id, installPkg.trim()); setInstallPkg(""); setShowInstall(false); } }}
+            disabled={!CODE_EXECUTION_ENABLED}
+            title={EXECUTION_DISABLED_MESSAGE}
             className="font-mono text-[9px] px-2 py-0.5 tracking-wider uppercase"
             style={{ color: lang.color, border: `1px solid ${lang.color}40` }}
           >

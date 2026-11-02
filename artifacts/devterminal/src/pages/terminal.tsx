@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, useCallback, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { SearchAddon } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
-import { TerminalSquare, Wifi, WifiOff, RotateCcw, Maximize2, Minimize2, Search, X, Trash2 } from "lucide-react";
+import { TerminalSquare, Maximize2, Minimize2, Search, X, Trash2, AlertTriangle } from "lucide-react";
 import { useAppContext } from "@/lib/app-context";
 import { useNeuralContext } from "@/lib/neural-context";
 import {
@@ -13,9 +13,6 @@ import {
 } from "@/lib/deepseek-stream";
 import { writeNewAutonomousEvents } from "@/lib/terminal-autonomous-events";
 
-const BASE_HOST = window.location.host;
-const WS_PROTOCOL = window.location.protocol === "https:" ? "wss:" : "ws:";
-const WS_URL = `${WS_PROTOCOL}//${BASE_HOST}/api/terminal/ws`;
 const TERMINAL_CONVERSATION_ID = "terminal_main_session";
 
 type TerminalHistoryMessage = {
@@ -45,11 +42,6 @@ function writeSafeText(term: XTerm, value: string) {
   term.write(removeTerminalControls(value).replace(/\r?\n/g, "\r\n"));
 }
 
-function scriptCommandName(command: string): string | null {
-  const match = command.trim().match(/^(?:(?:python3?|node|bash|sh|ruby|perl|php|go\s+run|cargo\s+run)\b|\.\/[^\s]+|[^\s]+\.(?:py|js|mjs|cjs|ts|sh|rb|go))\b/i);
-  return match?.[0]?.toLowerCase().replace(/\s+/g, " ") ?? null;
-}
-
 async function typeResponse(term: XTerm, value: string, signal: AbortSignal) {
   for (const character of removeTerminalControls(value)) {
     if (signal.aborted) return;
@@ -61,7 +53,6 @@ async function typeResponse(term: XTerm, value: string, signal: AbortSignal) {
 export default function TerminalPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
   const deepSeekAbortRef = useRef<AbortController | null>(null);
@@ -69,20 +60,12 @@ export default function TerminalPage() {
   const initializedAutonomousEventsRef = useRef(false);
   const { currentCode, currentLanguage } = useAppContext();
   const { recordEvent, events } = useNeuralContext();
-  const recordEventRef = useRef(recordEvent);
-  const shellCommandBufferRef = useRef("");
-  const [status, setStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
-  const [sessionCount, setSessionCount] = useState(0);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [smartCommand, setSmartCommand] = useState("");
   const [isDeepSeekThinking, setIsDeepSeekThinking] = useState(false);
   const [isClearingChat, setIsClearingChat] = useState(false);
-
-  useEffect(() => {
-    recordEventRef.current = recordEvent;
-  }, [recordEvent]);
 
   useEffect(() => {
     if (!initializedAutonomousEventsRef.current) {
@@ -102,12 +85,6 @@ export default function TerminalPage() {
       },
     );
   }, [events]);
-
-  const sendResize = useCallback((term: XTerm, ws: WebSocket) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ resize: true, cols: term.cols, rows: term.rows }));
-    }
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -137,41 +114,6 @@ export default function TerminalPage() {
     return () => controller.abort();
   }, []);
 
-  const connect = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
-
-    const term = termRef.current;
-    if (!term || !containerRef.current) return;
-
-    setStatus("connecting");
-
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setStatus("connected");
-      setSessionCount(s => s + 1);
-      if (fitRef.current) {
-        fitRef.current.fit();
-        sendResize(term, ws);
-      }
-    };
-
-    ws.onmessage = (event) => {
-      term.write(typeof event.data === "string" ? event.data : new Uint8Array(event.data));
-    };
-
-    ws.onclose = () => {
-      setStatus("disconnected");
-    };
-
-    ws.onerror = () => {
-      setStatus("disconnected");
-    };
-  }, [sendResize]);
-
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -179,10 +121,12 @@ export default function TerminalPage() {
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
       fontSize: 13,
       lineHeight: 1.4,
+      disableStdin: true,
       letterSpacing: 0,
       cursorBlink: true,
       cursorStyle: "block",
       scrollback: 10000,
+      disableStdin: true,
       theme: {
         background: "#080808",
         foreground: "#e0e0e0",
@@ -224,38 +168,13 @@ export default function TerminalPage() {
 
     term.open(containerRef.current);
     fit.fit();
-
-    term.onData((data) => {
-      if (data.includes("\r") || data.includes("\n")) {
-        const command = shellCommandBufferRef.current.trim();
-        const scriptName = scriptCommandName(command);
-        if (scriptName) {
-          recordEventRef.current({
-            origin: "terminal",
-            eventType: "script_run",
-            content: `script=${scriptName}`,
-          });
-        }
-        shellCommandBufferRef.current = "";
-      } else if (data === "\x7f") {
-        shellCommandBufferRef.current = shellCommandBufferRef.current.slice(0, -1);
-      } else if (data === "\x03" || data === "\x15") {
-        shellCommandBufferRef.current = "";
-      } else if (!data.includes("\x1b")) {
-        shellCommandBufferRef.current += data.replace(/[^\x20-\x7e]/g, "").slice(0, 1000);
-      }
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(data);
-      }
-    });
-
-    connect();
+    writeSafeText(
+      term,
+      "[PTY deshabilitada por seguridad. No se ejecutan comandos en el servidor.]\n[Usa ds <pregunta> para consultar SQ-AI.]\n\n",
+    );
 
     const handleResize = () => {
-      if (fitRef.current && termRef.current && wsRef.current) {
-        fitRef.current.fit();
-        sendResize(termRef.current, wsRef.current);
-      }
+      fitRef.current?.fit();
     };
 
     const ro = new ResizeObserver(handleResize);
@@ -265,7 +184,6 @@ export default function TerminalPage() {
     return () => {
       deepSeekAbortRef.current?.abort();
       term.dispose();
-      wsRef.current?.close();
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
     };
@@ -288,7 +206,7 @@ export default function TerminalPage() {
     if (command.toLowerCase() === "help") {
       writeSafeText(
         term,
-        "\nComandos disponibles:\n  help              Muestra esta ayuda\n  clear             Limpia la pantalla\n  ls [opciones]     Lista archivos del proyecto en la shell local\n  ds <pregunta>     Consulta SQ-AI con streaming\n  cualquier otro    Se ejecuta en la shell local\n\n",
+        "\nComandos disponibles:\n  help              Muestra esta ayuda\n  clear             Limpia la pantalla\n  ds <pregunta>     Consulta SQ-AI con streaming\n\nLa ejecución de comandos de shell está deshabilitada por seguridad.\n\n",
       );
       return;
     }
@@ -299,20 +217,7 @@ export default function TerminalPage() {
     }
 
     if (!/^ds\s+/i.test(command)) {
-      const ws = wsRef.current;
-      if (ws?.readyState === WebSocket.OPEN) {
-        ws.send(`${command}\r`);
-        const scriptName = scriptCommandName(command);
-        if (scriptName) {
-          recordEvent({
-            origin: "terminal",
-            eventType: "script_run",
-            content: `script=${scriptName}`,
-          });
-        }
-      } else {
-        writeSafeText(term, "\nLa shell local está desconectada. Reconecta la sesión e inténtalo de nuevo.\n");
-      }
+      writeSafeText(term, "\n[PTY deshabilitada] Los comandos de shell no se ejecutan.\n");
       return;
     }
 
@@ -416,14 +321,6 @@ export default function TerminalPage() {
     }
   };
 
-  const handleReconnect = () => {
-    if (termRef.current) {
-      termRef.current.clear();
-      termRef.current.write("\x1b[38;5;240m[Reconnecting...]\x1b[0m\r\n");
-    }
-    connect();
-  };
-
   const handleClearChat = async () => {
     if (isClearingChat || isDeepSeekThinking) return;
     setIsClearingChat(true);
@@ -466,30 +363,9 @@ export default function TerminalPage() {
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            {status === "connected" ? (
-              <>
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#00ff41] opacity-60" />
-                  <span className="relative h-1.5 w-1.5 rounded-full bg-[#00ff41]" style={{ boxShadow: "0 0 4px #00ff41" }} />
-                </span>
-                <Wifi className="h-3 w-3 text-[#00ff41]/60" />
-                <span className="font-mono text-[9px] text-[#00ff41]/60 tracking-widest uppercase">bash activa</span>
-              </>
-            ) : status === "connecting" ? (
-              <>
-                <span className="h-1.5 w-1.5 rounded-full bg-[#ffd700] animate-pulse" />
-                <span className="font-mono text-[9px] text-[#ffd700]/60 tracking-widest uppercase">conectando...</span>
-              </>
-            ) : (
-              <>
-                <WifiOff className="h-3 w-3 text-[#ff003c]/60" />
-                <span className="font-mono text-[9px] text-[#ff003c]/60 tracking-widest uppercase">desconectada</span>
-              </>
-            )}
+            <AlertTriangle className="h-3.5 w-3.5 text-[#ff003c]" aria-hidden="true" />
+            <span className="font-mono text-[9px] text-[#ff9aac] tracking-widest uppercase">PTY deshabilitada</span>
           </div>
-          {sessionCount > 0 && (
-            <span className="font-mono text-[9px] text-[#222] tracking-widest">sess:{sessionCount}</span>
-          )}
         </div>
 
         <div className="flex items-center gap-1">
@@ -526,54 +402,12 @@ export default function TerminalPage() {
           <button onClick={() => setIsFullscreen(v => !v)} className="p-1.5 border border-transparent text-[#333] hover:text-[#666] hover:border-[#222] transition-colors">
             {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
           </button>
-          <button
-            onClick={handleReconnect}
-            disabled={status === "connecting"}
-            className="p-1.5 border border-transparent text-[#333] hover:text-[#ff003c]/60 hover:border-[#ff003c]/20 transition-colors disabled:opacity-30"
-          >
-            <RotateCcw className="h-3 w-3" />
-          </button>
-          {status === "disconnected" && (
-            <button
-              onClick={handleReconnect}
-              className="flex items-center gap-1.5 px-3 py-1 font-mono text-[10px] uppercase tracking-widest text-black bg-[#ff003c] hover:bg-[#ff1a52] transition-colors ml-1"
-              style={{ boxShadow: "0 0 8px #ff003c40" }}
-            >
-              RECONNECT
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Quick command bar */}
-      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-[#0f0f0f] bg-[#050505] overflow-x-auto flex-shrink-0">
-        {[
-          { label: "python3", cmd: "python3\r" },
-          { label: "node", cmd: "node\r" },
-          { label: "lista pip", cmd: "pip list 2>/dev/null | head -20\r" },
-          { label: "registro git", cmd: "git log --oneline -10 2>/dev/null || echo 'no es un repositorio git'\r" },
-          { label: "ls -la", cmd: "ls -la\r" },
-          { label: "ps aux", cmd: "ps aux | head -15\r" },
-          { label: "free -h", cmd: "free -h\r" },
-          { label: "df -h", cmd: "df -h\r" },
-          { label: "curl wttr.in", cmd: "curl -s wttr.in?format=3\r" },
-          { label: "actualizar pip", cmd: "pip install --upgrade pip requests httpx aiohttp numpy pandas flask fastapi 2>&1 | tail -5\r" },
-          { label: "htop", cmd: "htop\r" },
-          { label: "clear", cmd: "clear\r" },
-        ].map(({ label, cmd }) => (
-          <button
-            key={label}
-            onClick={() => {
-              if (wsRef.current?.readyState === WebSocket.OPEN) {
-                wsRef.current.send(cmd);
-                termRef.current?.focus();
-              }
-            }}
-            className="font-mono text-[9px] text-[#333] border border-[#111] px-2 py-1 whitespace-nowrap hover:text-[#00ff41]/70 hover:border-[#00ff41]/20 hover:bg-[#00ff41]/5 transition-all flex-shrink-0"
-          >
-            {label}
-          </button>
-        ))}
+      <div role="status" className="flex items-start gap-2 border-b border-[#ff003c]/20 bg-[#ff003c]/5 px-3 py-2 font-mono text-[10px] leading-relaxed text-[#ff9aac]">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ff003c]" aria-hidden="true" />
+        <span>La terminal interactiva está desactivada porque esta app no tiene autenticación ni aislamiento de procesos verificado. SQ-AI y el historial siguen disponibles.</span>
       </div>
 
       <form
@@ -585,10 +419,10 @@ export default function TerminalPage() {
         <input
           value={smartCommand}
           onChange={(event) => setSmartCommand(event.target.value)}
-          maxLength={8003}
-          placeholder="help, clear, ls o ds <pregunta>"
+          maxLength={4000}
+          placeholder="help, clear o ds <pregunta>"
           aria-label="Comando o pregunta para SQ-AI"
-          className="min-w-0 flex-1 bg-transparent font-mono text-xs text-[#00ff41] placeholder:text-[#35523a] focus:outline-none"
+          className="min-h-11 min-w-0 flex-1 bg-transparent font-mono text-xs text-[#00ff41] placeholder:text-[#35523a] focus:outline-none"
           autoComplete="off"
           spellCheck={false}
         />
@@ -609,30 +443,15 @@ export default function TerminalPage() {
         <button
           type="submit"
           disabled={!smartCommand.trim() || isDeepSeekThinking}
-          className="border border-[#00ff41]/25 px-2 py-1 font-mono text-[9px] tracking-widest text-[#00ff41] hover:bg-[#00ff41]/10 disabled:opacity-30"
+          className="min-h-11 border border-[#00ff41]/25 px-3 font-mono text-[10px] tracking-widest text-[#00ff41] hover:bg-[#00ff41]/10 disabled:opacity-30"
         >
-          EJECUTAR
+          CONSULTAR
         </button>
       </form>
 
       {/* xterm container */}
       <div className="flex-1 overflow-hidden relative" style={{ padding: "8px 4px 4px 8px" }}>
         <div ref={containerRef} className="h-full w-full" />
-        {status === "disconnected" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#080808]/80 backdrop-blur-sm">
-            <div className="text-center font-mono">
-              <div className="text-[#ff003c] text-sm font-bold tracking-widest uppercase mb-2">SESIÓN CERRADA</div>
-              <div className="text-[#333] text-xs mb-4">Se perdió la conexión con la shell Bash</div>
-              <button
-                onClick={handleReconnect}
-                className="px-4 py-2 font-mono text-xs uppercase tracking-widest text-black bg-[#ff003c] hover:bg-[#ff1a52]"
-                style={{ boxShadow: "0 0 12px #ff003c50" }}
-              >
-                REINICIAR SESIÓN
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
