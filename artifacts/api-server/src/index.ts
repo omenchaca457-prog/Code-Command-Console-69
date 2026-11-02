@@ -34,6 +34,12 @@ if (Number.isNaN(port) || port <= 0) {
 const server = createServer(app);
 
 const terminalWss = attachTerminalWS(server);
+pool.on("error", (error: Error & { code?: string }) => {
+  logger.warn(
+    { code: error.code ?? "unknown" },
+    "PostgreSQL idle client failed; the pool will discard it and the API will remain online",
+  );
+});
 
 const neuralEventTransport = new PostgresNeuralEventTransport({
   pool,
@@ -42,9 +48,6 @@ const neuralEventTransport = new PostgresNeuralEventTransport({
   onEvent: publishRemoteNeuralEvent,
 });
 configureNeuralEventNotifier((eventId) => neuralEventTransport.publish(eventId));
-
-await neuralEventTransport.start();
-await initializeAgentTelemetry();
 
 const detachMotorTelemetry = attachMotorTelemetry({
   stopSimulation, startSimulation, subscribeToSimulation, getSimulationStatus,
@@ -56,7 +59,42 @@ server.listen(port, () => {
   logger.info({ port }, "Server listening");
 });
 
+let shuttingDown = false;
+const sleep = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+void neuralEventTransport.start().catch((error: unknown) => {
+  logger.warn({ err: error }, "Neural event transport could not start; its retry loop will recover");
+});
+
+async function initializeDatabaseBackedTelemetry() {
+  let attempt = 0;
+  while (!shuttingDown) {
+    try {
+      await pool.query("SELECT 1");
+      await initializeAgentTelemetry();
+      logger.info("Agent telemetry initialized");
+      return;
+    } catch (error) {
+      attempt += 1;
+      const delayMs = Math.min(30_000, 1_000 * 2 ** Math.min(attempt - 1, 5));
+      const code =
+        typeof error === "object" && error !== null && "code" in error
+          ? String(error.code)
+          : "unknown";
+      logger.warn(
+        { attempt, delayMs, code },
+        "Database-backed telemetry initialization failed; retrying without stopping the API",
+      );
+      await sleep(delayMs);
+    }
+  }
+}
+
+void initializeDatabaseBackedTelemetry();
+
 process.once("SIGTERM", () => {
+  shuttingDown = true;
   logger.info("SIGTERM recibido; cerrando servidor y pool de PostgreSQL");
   stopSimulation();
   detachMotorTelemetry();
@@ -70,6 +108,7 @@ process.once("SIGTERM", () => {
     }
     void neuralEventTransport
       .stop()
+      .then(() => new Promise<void>((resolve) => terminalWss.close(() => resolve())))
       .then(() => pool.end())
       .then(() => logger.info("Pool de PostgreSQL cerrado"))
       .catch((poolError) => {

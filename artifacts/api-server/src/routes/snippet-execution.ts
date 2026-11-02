@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { eq, sql } from "drizzle-orm";
-import { ExecuteSnippetParams, ExecuteSnippetResponse } from "@workspace/api-zod";
+import { ExecuteSnippetParams, ExecuteSnippetResponse } from "@workspace/api-zod/generated/api";
 
 const SIMULATED_OUTPUT = "Hello, DevTerminal!" as const;
 

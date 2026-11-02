@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { Router } from "express";
-import { GetTradingStatusResponse } from "@workspace/api-zod";
+import { GetTradingStatusResponse } from "@workspace/api-zod/generated/api";
 import { disableTelemetryCache } from "./telemetry-cache.ts";
 
 export const OFFLINE_TRADING_STATUS = Object.freeze({

@@ -5,6 +5,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { recordServerRequest } from "./lib/runtime-diagnostics";
 import { disableTelemetryCache } from "./routes/telemetry-cache";
+import { createRateLimiter } from "./lib/rate-limit";
 
 const app: Express = express();
 
@@ -35,11 +36,22 @@ app.use((req, res, next) => {
   next();
 });
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(
+  "/api",
+  createRateLimiter({ scope: "api", maxRequests: 300, windowMs: 60_000 }),
+);
+app.use(
+  ["/api/ai", "/api/deepseek", "/api/gemini", "/api/openai"],
+  createRateLimiter({ scope: "model-api", maxRequests: 30, windowMs: 60_000 }),
+);
+app.use(express.json({ limit: "256kb" }));
+app.use(express.urlencoded({ extended: true, limit: "16kb", parameterLimit: 100 }));
 
 // Telemetry is always live, including requests with old cache validators.
-app.use(["/api/healthz", "/api/agents", "/api/neural-events"], disableTelemetryCache);
+app.use(
+  ["/api/healthz", "/api/readyz", "/api/agents", "/api/neural-events"],
+  disableTelemetryCache,
+);
 
 app.get("/", (_req, res) => {
   res.redirect(302, "/api/healthz");

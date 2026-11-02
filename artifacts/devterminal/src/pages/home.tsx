@@ -24,6 +24,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAppContext } from "@/lib/app-context";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+const CODE_EXECUTION_ENABLED = false;
+const EXECUTION_DISABLED_MESSAGE =
+  "La ejecución está desactivada: falta autenticación de usuario y aislamiento de procesos verificado.";
 
 type AutoStep =
   | { type: "scan"; msg: string }
@@ -130,6 +133,10 @@ export default function Home() {
 
   // AUTONOMOUS EXECUTE — streams SSE from /api/ai/auto-run
   const handleAutoRun = useCallback(async () => {
+    if (!CODE_EXECUTION_ENABLED) {
+      toast({ title: "AUTO-RUN DESACTIVADO", description: EXECUTION_DISABLED_MESSAGE });
+      return;
+    }
     if (!code.trim()) return;
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
@@ -144,7 +151,7 @@ export default function Home() {
       const resp = await fetch(`${BASE_URL}/api/ai/auto-run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, language: languageId, consent: true }),
+        body: JSON.stringify({ code, language: languageId }),
         signal: abortRef.current.signal,
       });
 
@@ -206,6 +213,10 @@ export default function Home() {
   }, [code, languageId, setCode]);
 
   const handleRun = () => {
+    if (!CODE_EXECUTION_ENABLED) {
+      toast({ title: "EJECUCIÓN DESACTIVADA", description: EXECUTION_DISABLED_MESSAGE });
+      return;
+    }
     setOutput(null);
     setShowAutoPanel(false);
     executeMutation.mutate({
@@ -271,19 +282,33 @@ export default function Home() {
     const parts = text.split(/(```[\s\S]*?```)/g);
     return parts.map((part, i) => {
       if (part.startsWith('```') && part.endsWith('```')) {
-        const content = part.substring(3, part.length - 3);
-        const [, ...codeLines] = content.split('\n');
+        const content = part.slice(3, -3).replace(/^[^\n]*\n/, "").trim();
         return (
           <pre key={i} className="my-3 p-3 bg-black border border-[#00ff41]/20 text-sm font-mono text-[#00ff41] overflow-x-auto">
-            <code>{codeLines.join('\n').trim()}</code>
+            <code>{content}</code>
           </pre>
         );
       }
-      let html = part
-        .replace(/\*\*(.*?)\*\*/g, '<strong class="text-[#ff003c]">$1</strong>')
-        .replace(/`(.*?)`/g, '<code style="background:rgba(0,255,65,0.08);color:#00ff41;padding:0 4px">$1</code>')
-        .replace(/\n/g, '<br/>');
-      return <span key={i} dangerouslySetInnerHTML={{ __html: html }} />;
+      const tokens = part.split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/g);
+      return (
+        <span key={i}>
+          {tokens.flatMap((token, tokenIndex) => {
+            const isBold = token.startsWith("**") && token.endsWith("**");
+            const isCode = token.startsWith("`") && token.endsWith("`");
+            const content = isBold || isCode ? token.slice(isBold ? 2 : 1, isBold ? -2 : -1) : token;
+            const lines = content.split("\n");
+            return lines.flatMap((line, lineIndex) => {
+              const key = `${tokenIndex}-${lineIndex}`;
+              const node = isBold
+                ? <strong key={key} className="text-[#ff003c]">{line}</strong>
+                : isCode
+                  ? <code key={key} className="bg-[#00ff41]/10 px-1 text-[#00ff41]">{line}</code>
+                  : <span key={key}>{line}</span>;
+              return lineIndex < lines.length - 1 ? [node, <br key={`${key}-break`} />] : [node];
+            });
+          })}
+        </span>
+      );
     });
   };
 
@@ -327,6 +352,10 @@ export default function Home() {
       <div className="flex-1 flex flex-col h-full min-w-0">
         {/* Toolbar */}
         <div className="flex flex-col border-b border-[#ff003c]/15 bg-[#060606] flex-shrink-0">
+          <div role="status" className="flex items-start gap-2 border-b border-[#ff003c]/20 bg-[#ff003c]/5 px-3 py-2 font-mono text-[10px] leading-relaxed text-[#ff9aac]">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ff003c]" />
+            <span>{EXECUTION_DISABLED_MESSAGE} Puedes seguir editando, guardar snippets y consultar al asistente.</span>
+          </div>
           <div className="flex items-center justify-between px-3 py-2">
             <Select value={languageId} onValueChange={setLanguageId}>
               <SelectTrigger className="w-[140px] h-7 bg-transparent border-[#ff003c]/20 font-mono text-[10px] text-[#777] uppercase tracking-wider hover:border-[#ff003c]/40 focus:ring-0">
@@ -352,7 +381,7 @@ export default function Home() {
               {/* Regular execute */}
               <button
                 onClick={handleRun}
-                disabled={executeMutation.isPending || autoRunning}
+                disabled={!CODE_EXECUTION_ENABLED || executeMutation.isPending || autoRunning}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono tracking-widest uppercase text-[#888] border border-[#333] hover:border-[#00ff41]/40 hover:text-[#00ff41] hover:bg-[#00ff41]/5 transition-all disabled:opacity-40"
               >
                 {executeMutation.isPending ? <div className="h-3 w-3 animate-spin rounded-full border border-[#00ff41] border-t-transparent" /> : <Play className="h-3 w-3" />}
@@ -362,9 +391,9 @@ export default function Home() {
               {/* AUTONOMOUS execute — the star */}
               <button
                 onClick={autoRunning ? () => { abortRef.current?.abort(); setAutoRunning(false); } : handleAutoRun}
-                disabled={executeMutation.isPending}
-                title={autoRunning ? "Detener la ejecución automática" : "Iniciar Auto-run ahora; no se ejecuta automáticamente"}
-                aria-label={autoRunning ? "Detener Auto-run" : "Iniciar Auto-run manualmente"}
+                disabled={!CODE_EXECUTION_ENABLED || executeMutation.isPending}
+                title={EXECUTION_DISABLED_MESSAGE}
+                aria-label="Auto-run desactivado por seguridad"
                 className={`flex items-center gap-1.5 px-4 py-1.5 text-[10px] font-mono font-bold tracking-widest uppercase transition-all disabled:opacity-40 ${
                   autoRunning
                     ? 'text-[#ff003c] border border-[#ff003c]/50 bg-[#ff003c]/10 animate-pulse'
@@ -393,7 +422,7 @@ export default function Home() {
                 <Icon className="h-2.5 w-2.5" /> {label}
               </button>
             ))}
-            {output?.exitCode !== 0 && output?.exitCode !== undefined && (
+            {CODE_EXECUTION_ENABLED && output?.exitCode !== 0 && output?.exitCode !== undefined && (
               <button onClick={handleAutoRun}
                 className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono text-[#ff4040]/60 hover:text-[#ff4040] hover:bg-[#ff4040]/8 border border-transparent hover:border-[#ff4040]/20 transition-all tracking-wider uppercase animate-pulse">
                 <Bug className="h-2.5 w-2.5" /> Auto-Fix
@@ -407,7 +436,7 @@ export default function Home() {
                   {autoDone.exitCode === 0 ? "✓ AUTO SUCCESS" : "✗ AUTO FAILED"}
                 </span>
               ) : (
-                <span>PRESS AUTO TO RUN AUTONOMOUS</span>
+                <span>AUTO-RUN DISABLED</span>
               )}
             </div>
           </div>
