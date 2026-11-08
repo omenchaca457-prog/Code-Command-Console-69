@@ -1,15 +1,20 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
+
+const root = path.resolve(import.meta.dirname, "..");
+if (existsSync(path.join(root, ".env"))) process.loadEnvFile(path.join(root, ".env"));
 
 const services = [
   {
     name: "API Server",
     packageName: "@workspace/api-server",
-    env: { NODE_ENV: "development", PORT: "3000" },
+    env: { NODE_ENV: "development", PORT: process.env.API_PORT || "3000" },
   },
   {
     name: "DevTerminal",
     packageName: "@workspace/devterminal",
-    env: { NODE_ENV: "development", PORT: "21612", BASE_PATH: "/" },
+    env: { NODE_ENV: "development", PORT: process.env.WEB_PORT || "21612", BASE_PATH: "/", API_PROXY_TARGET: `http://127.0.0.1:${process.env.API_PORT || "3000"}` },
   },
 ];
 
@@ -35,7 +40,7 @@ for (const service of services) {
     "pnpm",
     ["--filter", service.packageName, "run", "dev"],
     {
-      env: { ...process.env, ...service.env },
+      env: { ...process.env, WORKSPACE_ROOT: root, ...service.env },
       stdio: "inherit",
       detached: true,
     },

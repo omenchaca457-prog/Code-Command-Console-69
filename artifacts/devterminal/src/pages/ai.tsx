@@ -1,3 +1,6 @@
+import { InlineMarkdown } from "@/components/inline-markdown";
+import { Link } from "wouter";
+import { useWorkspaceStatus } from "@/lib/workspace-status";
 import { useState, useEffect, useRef } from "react";
 import { useAiExplain, useAiImprove } from "@workspace/api-client-react";
 import { useAppContext } from "@/lib/app-context";
@@ -16,6 +19,9 @@ type Message = {
 export default function AI() {
   const { currentCode, currentLanguage } = useAppContext();
   const { events, recordEvent } = useNeuralContext();
+  const { data: workspace } = useWorkspaceStatus();
+  const deepseekConfigured = workspace?.integrations.some(item => item.id === "deepseek" && item.configured) ?? false;
+  const openaiConfigured = workspace?.integrations.some(item => item.id === "openai" && item.configured) ?? false;
   const [messages, setMessages] = useState<Message[]>([
     { role: "assistant", content: "[STATUS] Núcleo SQ-AI listo. Contexto del editor y diagnósticos del sistema disponibles.\n[DATA] Ω pendiente de evidencia. ECR-Code: 410542503.\n[READY] Formula una consulta técnica, Arquitecto." }
   ]);
@@ -34,7 +40,7 @@ export default function AI() {
   }, [messages, isThinking]);
 
   const handleSend = async () => {
-    if (!input.trim() || isDeepseekThinking) return;
+    if (!input.trim() || isDeepseekThinking || !deepseekConfigured) return;
     const userMsg = input.trim();
     setMessages(prev => [...prev, { role: "user", content: userMsg }, { role: "assistant", content: "" }]);
     setInput("");
@@ -155,18 +161,16 @@ export default function AI() {
     const parts = text.split(/(```[\s\S]*?```)/g);
     return parts.map((part, i) => {
       if (part.startsWith('```') && part.endsWith('```')) {
-        const fencedContent = part.slice(3, -3).replace(/^\r?\n/, "");
-        const languageMatch = fencedContent.match(/^([a-zA-Z0-9_+-]*)\r?\n/);
-        const lang = languageMatch?.[1] || "code";
-        const content = languageMatch ? fencedContent.slice(languageMatch[0].length) : fencedContent;
+        const content = part.substring(3, part.length - 3);
+        const [lang, ...code] = content.split('\n');
         return (
           <div key={i} className="my-3 border border-[#00ff41]/20 overflow-hidden bg-black">
             <div className="flex justify-between items-center px-3 py-1.5 bg-[#0a0a0a] border-b border-[#00ff41]/15">
-              <span className="text-[10px] font-mono text-[#00ff41]/50 uppercase tracking-wider">{lang}</span>
+              <span className="text-[10px] font-mono text-[#00ff41]/50 uppercase tracking-wider">{lang || 'code'}</span>
               <button
                 className="text-[10px] font-mono text-[#333] hover:text-[#00ff41]/70 tracking-wider uppercase transition-colors"
                 onClick={() => {
-                  void navigator.clipboard.writeText(content.trim());
+                  navigator.clipboard.writeText(code.join('\n').trim());
                   toast({ title: "COPIED" });
                 }}
               >
@@ -174,34 +178,12 @@ export default function AI() {
               </button>
             </div>
             <pre className="p-4 text-xs font-mono text-[#00ff41] overflow-x-auto leading-relaxed" style={{ textShadow: "0 0 4px #00ff4120" }}>
-              <code>{content.trim()}</code>
+              <code>{code.join('\n').trim()}</code>
             </pre>
           </div>
         );
       }
-      const tokens = part.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g);
-      return (
-        <span key={i}>
-          {tokens.flatMap((token, tokenIndex) => {
-            const isBold = token.startsWith("**") && token.endsWith("**");
-            const isItalic = !isBold && token.startsWith("*") && token.endsWith("*");
-            const isCode = token.startsWith("`") && token.endsWith("`");
-            const content = isBold ? token.slice(2, -2) : isItalic || isCode ? token.slice(1, -1) : token;
-            const lines = content.split("\n");
-            return lines.flatMap((line, lineIndex) => {
-              const key = `${tokenIndex}-${lineIndex}`;
-              const node = isBold
-                ? <strong key={key} className="text-[#ff003c]">{line}</strong>
-                : isItalic
-                  ? <em key={key} className="text-[#aaa]">{line}</em>
-                  : isCode
-                    ? <code key={key} className="bg-[#00ff41]/10 px-1 text-[11px] text-[#00ff41]">{line}</code>
-                    : <span key={key}>{line}</span>;
-              return lineIndex < lines.length - 1 ? [node, <br key={`${key}-break`} />] : [node];
-            });
-          })}
-        </span>
-      );
+      return <InlineMarkdown key={i} text={part} />;
     });
   };
 
@@ -223,11 +205,13 @@ export default function AI() {
           </div>
           <div>
             <h1 className="text-sm font-mono font-bold tracking-[0.25em] uppercase text-[#ff003c]" style={{ textShadow: "0 0 12px #ff003c60" }}>
-              NEURAL INTERFACE
+              ASISTENTE DE DESARROLLO
             </h1>
-            <p className="text-[10px] font-mono text-[#333] tracking-widest uppercase">AI-POWERED CODE INTELLIGENCE</p>
+            <p className="text-[10px] font-mono text-[#333] tracking-widest uppercase">DEEPSEEK · CONTEXTO DE TU WORKSPACE</p>
           </div>
         </div>
+
+        {!deepseekConfigured && <div className="ai-connection-notice" role="status"><span>{workspace ? "Configura DeepSeek para empezar a conversar." : "Comprobando la conexión con el servidor…"}</span><Link href="/settings">Ver conexiones →</Link></div>}
 
         {/* Messages */}
         <ScrollArea className="flex-1 pr-2 mb-4">
@@ -286,14 +270,16 @@ export default function AI() {
           <div className="flex gap-2 px-3 py-2 border-b border-[#ff003c]/10">
             <button
               onClick={handleExplain}
-              disabled={isThinking}
+              disabled={isThinking || !openaiConfigured}
+              title={openaiConfigured ? "Analizar el código del editor" : "Esta herramienta requiere configurar OpenAI"}
               className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono tracking-widest uppercase text-[#555] border border-[#222] hover:border-[#ff003c]/30 hover:text-[#ff003c]/70 hover:bg-[#ff003c]/5 transition-all disabled:opacity-30"
             >
               <Code className="h-2.5 w-2.5" /> Analyze Code
             </button>
             <button
               onClick={handleImprove}
-              disabled={isThinking}
+              disabled={isThinking || !openaiConfigured}
+              title={openaiConfigured ? "Optimizar el código del editor" : "Esta herramienta requiere configurar OpenAI"}
               className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono tracking-widest uppercase text-[#555] border border-[#222] hover:border-[#ff003c]/30 hover:text-[#ff003c]/70 hover:bg-[#ff003c]/5 transition-all disabled:opacity-30"
             >
               <Wrench className="h-2.5 w-2.5" /> Optimize
@@ -310,7 +296,9 @@ export default function AI() {
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
-              placeholder="// Enter query..."
+              placeholder={deepseekConfigured ? "Pregunta sobre tu código…" : "Configura DeepSeek en Conexiones para conversar"}
+              aria-label="Pregunta para el asistente DeepSeek"
+              disabled={!deepseekConfigured}
               className="flex-1 min-h-[56px] max-h-[140px] resize-none bg-transparent border-0 px-3 py-2.5 font-mono text-xs text-[#aaa] placeholder:text-[#2a2a2a] focus:outline-none focus:ring-0"
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -321,7 +309,8 @@ export default function AI() {
             />
             <button
               onClick={handleSend}
-              disabled={!input.trim() || isThinking}
+              disabled={!input.trim() || isThinking || !deepseekConfigured}
+              aria-label="Enviar pregunta"
               className="px-4 self-stretch text-black bg-[#ff003c] hover:bg-[#ff1a52] transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
               style={{ boxShadow: input.trim() ? "0 0 12px #ff003c40" : "none" }}
             >

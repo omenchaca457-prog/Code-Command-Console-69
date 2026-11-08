@@ -16,6 +16,7 @@ import agentsSimulationRouter from "./agents-simulation";
 import tradingStatusRouter from "./trading-status";
 import replicationStatusRouter from "./replication-status";
 import { disableTelemetryCache } from "./telemetry-cache";
+import workspaceRouter from "./workspace";
 
 const router: IRouter = Router();
 
@@ -25,6 +26,7 @@ router.use([
 ], disableTelemetryCache);
 
 router.use(healthRouter);
+router.use(workspaceRouter);
 router.use(executeRouter);
 router.use(snippetsRouter);
 router.use(aiRouter);

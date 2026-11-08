@@ -2,30 +2,34 @@ import { Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useEffect, useState, type ComponentType } from "react";
+import { lazy, Suspense, useEffect, useState, type ComponentType } from "react";
 import NotFound from "@/pages/not-found";
-import TerminalPage from "@/pages/terminal";
-import Home from "@/pages/home";
-import Snippets from "@/pages/snippets";
-import AI from "@/pages/ai";
-import Tools from "@/pages/tools";
-import Runner from "@/pages/runner";
-import Neural from "@/pages/neural";
-import Agents from "@/pages/agents";
-import Cortex from "@/pages/cortex";
-import Creator from "@/pages/creator";
-import CoherenceSimulator from "@/pages/coherence-simulator";
-import Trading from "@/pages/trading";
-import ToolsCenter from "@/pages/tools-center";
+import Overview from "@/pages/overview";
+import Settings from "@/pages/settings";
 import { Layout } from "@/components/layout";
+import { PageBoundary } from "@/components/page-boundary";
 import { AppProvider } from "@/lib/app-context";
 import { NeuralProvider } from "@/lib/neural-context";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } } });
+
+const TerminalPage = lazy(() => import("@/pages/terminal"));
+const Home = lazy(() => import("@/pages/home"));
+const Snippets = lazy(() => import("@/pages/snippets"));
+const AI = lazy(() => import("@/pages/ai"));
+const Tools = lazy(() => import("@/pages/tools"));
+const Runner = lazy(() => import("@/pages/runner"));
+const Neural = lazy(() => import("@/pages/neural"));
+const Agents = lazy(() => import("@/pages/agents"));
+const Cortex = lazy(() => import("@/pages/cortex"));
+const Creator = lazy(() => import("@/pages/creator"));
+const CoherenceSimulator = lazy(() => import("@/pages/coherence-simulator"));
+const Trading = lazy(() => import("@/pages/trading"));
 
 const PERSISTENT_PAGES: Array<{ path: string; Component: ComponentType }> = [
-  { path: "/", Component: TerminalPage },
-  { path: "/tools-center", Component: ToolsCenter },
+  { path: "/", Component: Overview },
+  { path: "/terminal", Component: TerminalPage },
+  { path: "/settings", Component: Settings },
   { path: "/editor", Component: Home },
   { path: "/runner", Component: Runner },
   { path: "/snippets", Component: Snippets },
@@ -70,13 +74,16 @@ function PersistentPages() {
           <div
             key={path}
             aria-hidden={!isActive}
-            className={`absolute inset-0 transition-opacity duration-150 ${
+            inert={!isActive}
+            className={`absolute inset-0 transition-opacity duration-150 ${path !== "/" && path !== "/settings" ? "legacy-page" : ""} ${
               isActive
                 ? "z-10 visible opacity-100"
                 : "invisible pointer-events-none opacity-0"
             }`}
           >
-            <Component />
+            <PageBoundary>
+              <Suspense fallback={<div className="module-loading" role="status"><span className="module-loading-spinner" />Abriendo módulo…</div>}><Component /></Suspense>
+            </PageBoundary>
           </div>
         );
       })}
