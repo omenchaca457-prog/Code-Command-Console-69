@@ -216,6 +216,8 @@ describe("one-way PostgreSQL replication", () => {
     );
     assert.equal(status, "sent");
     assert.ok(statements.some((sql) => sql === "COMMIT"));
-    assert.equal(primaryClient.updates[0]?.[1], "sent");
+    assert.ok(primaryClient.statements.some(({ sql }) =>
+      sql.includes("SET status = 'sent'")
+    ));
   });
 });

@@ -106,6 +106,14 @@ export function Layout({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const databaseIndicatorClass = !databaseHealth
+    ? "bg-[#777]"
+    : databaseHealth.primary === "unavailable" || databaseHealth.replica === "unavailable"
+      ? "bg-[#ff003c]"
+      : databaseHealth.primary === "ready" && databaseHealth.replica === "ready"
+        ? "bg-[#00ff41]"
+        : "bg-[#ffd166]";
+
   const renderDesktopLink = (
     item: typeof toolModules[number] | typeof TOOL_CENTER,
     collapsed: boolean,
@@ -220,13 +228,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 className="flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center gap-2 border border-[#00ffff]/25 px-2 font-mono text-[10px] uppercase tracking-wider text-[#a9faff] hover:bg-[#00ffff]/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00ffff] [&::-webkit-details-marker]:hidden"
               >
                 <span
-                  className={`h-2 w-2 rounded-full ${
-                    databaseHealth?.primary === "ready"
-                      ? "bg-[#00ff41]"
-                      : databaseHealth?.primary === "unavailable"
-                        ? "bg-[#ff003c]"
-                        : "bg-[#777]"
-                  }`}
+                  className={`h-2 w-2 rounded-full ${databaseIndicatorClass}`}
                 />
                 <span>DB</span>
               </summary>

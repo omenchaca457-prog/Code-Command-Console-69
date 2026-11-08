@@ -4,6 +4,7 @@
 - [Cortex agent orchestration](cortex-agent-orchestration.md) — DeepSeek and Gemini analyze in parallel; OpenAI coordinates them and issues the final order.
 - [Runner Ω evidence](runner-omega-evidence.md) — Financial Ω uses the user's formula; execution stability is not proof of laminar trades, Sello S, or stable Ω.
 - [Replit App Storage client](replit-app-storage.md) — Use the Replit SDK with an explicit bucket ID; raw GCS lacks the managed ADC setup.
+- [PostgreSQL replication direction](postgresql-replication-direction.md) — Replit PostgreSQL is the only write authority; Neon is an optional one-way replica.
 - [Stale workspace declarations](stale-workspace-declarations.md) — If a leaf app cannot see an export present in a workspace package source, force-rebuild that package's declarations first.
 - [JSX in frontend tests](jsx-test-runtime.md) — The tsx test runner and Vite can use different JSX runtimes; test-imported components need React in scope.
 - [Trading monitor scope](trading-monitor-scope.md) — La Máquina 4105 is the user's Python bot; DevTerminal monitors its state without executing trades.
