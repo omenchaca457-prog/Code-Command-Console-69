@@ -90,12 +90,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
   const online = status?.database === "connected";
   const databaseIndicatorClass = !databaseHealth
-    ? "bg-[#777]"
+    ? "is-offline"
     : databaseHealth.primary === "unavailable" || databaseHealth.replica === "unavailable"
-      ? "bg-[#ff003c]"
+      ? "is-offline"
       : databaseHealth.primary === "ready" && databaseHealth.replica === "ready"
-        ? "bg-[#00ff41]"
-        : "bg-[#ffd166]";
+        ? "is-online"
+        : "is-pending";
 
   useEffect(() => {
     const query = window.matchMedia("(max-width: 760px)");

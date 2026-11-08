@@ -338,14 +338,14 @@ export default function Overview() {
                 </span>
                 <ArrowUpRight size={18} />
               </div>
-              <h3>Tu terminal, sin límites</h3>
+              <h3>Consola SQ-AI</h3>
               <p>
                 Consola inteligente e historial;
                 <br />
                 la shell espera aislamiento seguro.
               </p>
               <span className="quick-card-link">
-                Abrir una sesión
+                Abrir consola
                 <ArrowRight size={14} />
               </span>
               <span className="quick-card-bg">&gt;_</span>
