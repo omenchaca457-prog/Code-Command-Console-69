@@ -147,7 +147,7 @@ export default function Overview() {
               </Link>
             </div>
             <div className="welcome-footnote">
-              <CheckCircle2 size={13} /> Código real. Herramientas conectadas.
+              <CheckCircle2 size={13} /> Editor, biblioteca y herramientas disponibles.
             </div>
           </div>
           <div className="code-scene" aria-hidden="true">
@@ -205,7 +205,7 @@ export default function Overview() {
               </div>
               <div className="code-window-bottom">
                 <span>
-                  <span className="status-dot is-online" /> Listo para ejecutar
+                  <span className="status-dot is-pending" /> Código de ejemplo
                 </span>
                 <span>UTF-8</span>
               </div>
@@ -322,7 +322,7 @@ export default function Overview() {
               </div>
               <h3>Editor de código</h3>
               <p>
-                Un espacio para escribir, ejecutar
+                Un espacio para escribir, guardar
                 <br />y dar forma a tus ideas.
               </p>
               <span className="quick-card-link">
@@ -340,9 +340,9 @@ export default function Overview() {
               </div>
               <h3>Tu terminal, sin límites</h3>
               <p>
-                Una shell real para tus comandos,
+                Consola inteligente e historial;
                 <br />
-                scripts y flujos de trabajo.
+                la shell espera aislamiento seguro.
               </p>
               <span className="quick-card-link">
                 Abrir una sesión

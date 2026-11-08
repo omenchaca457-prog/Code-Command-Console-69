@@ -163,7 +163,7 @@ type DeepseekDependencies = {
 const defaultDependencies: DeepseekDependencies = {
   contextTimeoutMs: 2000,
   requestTimeoutMs: 90_000,
-  getApiKey: () => process.env.OPENAI_API_KEY,
+  getApiKey: () => process.env.DEEPSEEK_API_KEY,
   createClient: (apiKey) =>
     new OpenAI({
       apiKey,
@@ -224,7 +224,7 @@ const handleDeepseekChat = async (
   const apiKey = dependencies.getApiKey();
   if (!apiKey && !(mockEnabled && mockScenario)) {
     res.status(503).json({
-      error: "Falta configurar el secreto OPENAI_API_KEY en Replit.",
+      error: "Falta configurar el secreto DEEPSEEK_API_KEY en Replit Secrets.",
     });
     return;
   }

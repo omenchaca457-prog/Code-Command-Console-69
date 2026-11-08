@@ -20,7 +20,6 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 const basePath = process.env.BASE_PATH ?? "/";
-const apiProxy = { target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:3000", changeOrigin: true, ws: true };
 
 if (!basePath) {
   throw new Error(
@@ -61,7 +60,6 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    proxy: { "/api": apiProxy },
     port,
     strictPort: true,
     host: "0.0.0.0",
@@ -71,7 +69,6 @@ export default defineConfig({
     },
   },
   preview: {
-    proxy: { "/api": apiProxy },
     port,
     host: "0.0.0.0",
     allowedHosts: true,

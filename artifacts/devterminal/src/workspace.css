@@ -325,6 +325,104 @@ a {
   gap: 19px;
   align-items: center;
 }
+.workspace-api-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #8993a4;
+  font-family: var(--app-font-mono);
+  font-size: 9px;
+  white-space: nowrap;
+}
+.workspace-db-details {
+  position: relative;
+}
+.workspace-db-summary {
+  display: inline-flex;
+  min-width: 38px;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 7px;
+  border: 1px solid #ffffff12;
+  border-radius: 4px;
+  color: #aeb7c7;
+  cursor: pointer;
+  list-style: none;
+}
+.workspace-db-summary::-webkit-details-marker {
+  display: none;
+}
+.workspace-db-summary:focus-visible {
+  outline: 2px solid #00ffff;
+  outline-offset: 2px;
+}
+.workspace-db-popover {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(340px, calc(100vw - 20px));
+  padding: 14px;
+  border: 1px solid #00ffff35;
+  background: #090c10;
+  box-shadow: 0 12px 36px #000b;
+  color: #dbe3ee;
+}
+.workspace-db-popover h2 {
+  margin: 0 0 10px;
+  color: #8fefff;
+  font-family: var(--app-font-mono);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.workspace-db-popover dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  font-size: 11px;
+}
+.workspace-db-popover dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+}
+.workspace-db-popover dt {
+  color: #8792a3;
+}
+.workspace-db-popover dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.workspace-db-metrics {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px !important;
+  padding-top: 8px;
+  border-top: 1px solid #ffffff12;
+  color: #8792a3;
+}
+.workspace-db-metrics strong {
+  color: #dbe3ee;
+  font-weight: 500;
+}
+.workspace-db-popover p {
+  margin: 10px 0 0;
+  color: #ffd166;
+  font-size: 10px;
+}
+.tool-catalog-link {
+  margin-bottom: 9px;
+  border: 1px solid #00ffff24;
+  background: #00ffff07;
+}
+.tool-catalog-link.is-active {
+  border-color: #00ffff54;
+}
 .global-search {
   display: flex;
   align-items: center;

@@ -2,14 +2,13 @@ import { InlineMarkdown } from "@/components/inline-markdown";
 import { Link } from "wouter";
 import { useWorkspaceStatus } from "@/lib/workspace-status";
 import { useState, useEffect, useRef } from "react";
-import { useAiExplain, useAiImprove } from "@workspace/api-client-react";
 import { useAppContext } from "@/lib/app-context";
 import { useNeuralContext } from "@/lib/neural-context";
-import { Button } from "@/components/ui/button";
 import { Send, Code, Wrench, Bug, Copy, Eye } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { NeuralNet } from "@/components/neural-net";
 import { useToast } from "@/hooks/use-toast";
+import { consumeDeepseekSse } from "@/lib/deepseek-stream";
 
 type Message = {
   role: "user" | "assistant";
@@ -21,7 +20,6 @@ export default function AI() {
   const { events, recordEvent } = useNeuralContext();
   const { data: workspace } = useWorkspaceStatus();
   const deepseekConfigured = workspace?.integrations.some(item => item.id === "deepseek" && item.configured) ?? false;
-  const openaiConfigured = workspace?.integrations.some(item => item.id === "openai" && item.configured) ?? false;
   const [messages, setMessages] = useState<Message[]>([
     { role: "assistant", content: "[STATUS] Núcleo SQ-AI listo. Contexto del editor y diagnósticos del sistema disponibles.\n[DATA] Ω pendiente de evidencia. ECR-Code: 410542503.\n[READY] Formula una consulta técnica, Arquitecto." }
   ]);
@@ -29,40 +27,19 @@ export default function AI() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  const explainMutation = useAiExplain();
-  const improveMutation = useAiImprove();
-
   const [isDeepseekThinking, setIsDeepseekThinking] = useState(false);
-  const isThinking = isDeepseekThinking || explainMutation.isPending || improveMutation.isPending;
+  const isThinking = isDeepseekThinking;
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isDeepseekThinking || !deepseekConfigured) return;
-    const userMsg = input.trim();
+  const sendDeepseekPrompt = async (userMsg: string, context: string) => {
+    if (!userMsg.trim() || isDeepseekThinking || !deepseekConfigured) return;
     setMessages(prev => [...prev, { role: "user", content: userMsg }, { role: "assistant", content: "" }]);
-    setInput("");
     setIsDeepseekThinking(true);
     recordEvent({ origin: "terminal", eventType: "ai_query", content: "Consulta enviada desde la interfaz SQ-AI" });
     try {
-      const context = JSON.stringify({
-        page: "ai",
-        editor: {
-          language: currentLanguage,
-          status: currentCode.trim() ? "loaded" : "empty",
-          codeCharacters: currentCode.length,
-          code: currentCode.slice(0, 20_000),
-        },
-        recentRunnerAndAgentActivity: events
-          .filter(item => item.origin === "runner" || item.origin === "agents")
-          .slice(0, 8)
-          .map(({ origin, eventType, content, createdAt }) => ({ origin, eventType, content, createdAt })),
-        library: "Consulta get_library_snapshot.",
-        serverAndWebviewLogs: "Consulta get_runtime_diagnostics.",
-        integrations: "Consulta get_integrations_status sin solicitar credenciales.",
-      });
       const response = await fetch("/api/deepseek/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -73,33 +50,14 @@ export default function AI() {
         throw new Error(body?.error || `Error del servidor (${response.status}).`);
       }
       if (!response.body) throw new Error("El servidor no devolvió un flujo SSE.");
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      const append = (text: string) => setMessages(previous => {
+      await consumeDeepseekSse(response.body, new AbortController().signal, (text) => {
+        setMessages(previous => {
         const next = [...previous];
         const last = next.at(-1);
         if (last?.role === "assistant") next[next.length - 1] = { ...last, content: last.content + text };
         return next;
       });
-      const consume = (frame: string) => {
-        const data = frame.split(/\r?\n/).filter(line => line.startsWith("data:"))
-          .map(line => line.slice(5).trimStart()).join("\n");
-        if (!data || data === "[DONE]") return;
-        const payload = JSON.parse(data) as { delta?: string; error?: string };
-        if (payload.error) throw new Error(payload.error);
-        if (payload.delta) append(payload.delta);
-      };
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const frames = buffer.split(/\r?\n\r?\n/);
-        buffer = frames.pop() ?? "";
-        for (const frame of frames) consume(frame);
-      }
-      buffer += decoder.decode();
-      if (buffer.trim()) consume(buffer);
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error de conexión.";
       setMessages(previous => {
@@ -119,41 +77,46 @@ export default function AI() {
     }
   };
 
+  const codeContext = () => JSON.stringify({
+    page: "ai",
+    editor: {
+      language: currentLanguage,
+      status: currentCode.trim() ? "loaded" : "empty",
+      codeCharacters: currentCode.length,
+      code: currentCode.slice(0, 20_000),
+    },
+    recentRunnerAndAgentActivity: events
+      .filter(item => item.origin === "runner" || item.origin === "agents")
+      .slice(0, 8)
+      .map(({ origin, eventType, content, createdAt }) => ({ origin, eventType, content, createdAt })),
+    library: "Consulta get_library_snapshot.",
+    serverAndWebviewLogs: "Consulta get_runtime_diagnostics.",
+    integrations: "Consulta get_integrations_status sin solicitar credenciales.",
+  });
+
+  const handleSend = () => {
+    const userMsg = input.trim();
+    if (!userMsg || !deepseekConfigured) return;
+    setInput("");
+    void sendDeepseekPrompt(userMsg, codeContext());
+  };
+
   const handleExplain = () => {
     if (!currentCode.trim()) {
-      toast({ title: "NO CODE", description: "Workspace is empty." });
+      toast({ title: "Falta código", description: "Abre o escribe código en el editor primero." });
       return;
     }
-    setMessages(prev => [...prev, { role: "user", content: `Analyze the current ${currentLanguage} code.` }]);
-    explainMutation.mutate({ data: { code: currentCode, language: currentLanguage } }, {
-      onSuccess: (res) => setMessages(prev => [...prev, {
-        role: "assistant",
-        content: typeof res.result === "string" && res.result.trim()
-          ? res.result
-          : "The AI returned no explanation."
-      }]),
-      onError: () => toast({ title: "ERROR", description: "Analysis failed.", variant: "destructive" })
-    });
+    const prompt = `Explica el siguiente código ${currentLanguage} de forma clara, señalando propósito, flujo y riesgos. No edites archivos, no escribas cambios y no ejecutes código.`;
+    void sendDeepseekPrompt(prompt, codeContext());
   };
 
   const handleImprove = () => {
     if (!currentCode.trim()) {
-      toast({ title: "NO CODE", description: "Workspace is empty." });
+      toast({ title: "Falta código", description: "Abre o escribe código en el editor primero." });
       return;
     }
-    setMessages(prev => [...prev, { role: "user", content: `Optimize the current ${currentLanguage} code.` }]);
-    improveMutation.mutate({ data: { code: currentCode, language: currentLanguage } }, {
-      onSuccess: (res) => {
-        const improvedCode = typeof res.result === "string" ? res.result.trim() : "";
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: improvedCode
-            ? `Optimized code:\n\n\`\`\`${currentLanguage}\n${improvedCode}\n\`\`\``
-            : "The AI returned no optimized code."
-        }]);
-      },
-      onError: () => toast({ title: "ERROR", description: "Optimization failed.", variant: "destructive" })
-    });
+    const prompt = `Propón una versión mejorada del código ${currentLanguage} del contexto y explica brevemente los cambios. Devuelve el código en un bloque cercado. No edites archivos, no apliques cambios y no ejecutes código.`;
+    void sendDeepseekPrompt(prompt, codeContext());
   };
 
   const renderMarkdown = (value: unknown) => {
@@ -270,19 +233,19 @@ export default function AI() {
           <div className="flex gap-2 px-3 py-2 border-b border-[#ff003c]/10">
             <button
               onClick={handleExplain}
-              disabled={isThinking || !openaiConfigured}
-              title={openaiConfigured ? "Analizar el código del editor" : "Esta herramienta requiere configurar OpenAI"}
+              disabled={isThinking || !deepseekConfigured}
+              title={deepseekConfigured ? "Analizar el código con DeepSeek" : "Configura DEEPSEEK_API_KEY en Replit Secrets"}
               className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono tracking-widest uppercase text-[#555] border border-[#222] hover:border-[#ff003c]/30 hover:text-[#ff003c]/70 hover:bg-[#ff003c]/5 transition-all disabled:opacity-30"
             >
-              <Code className="h-2.5 w-2.5" /> Analyze Code
+              <Code className="h-2.5 w-2.5" /> Explicar
             </button>
             <button
               onClick={handleImprove}
-              disabled={isThinking || !openaiConfigured}
-              title={openaiConfigured ? "Optimizar el código del editor" : "Esta herramienta requiere configurar OpenAI"}
+              disabled={isThinking || !deepseekConfigured}
+              title={deepseekConfigured ? "Proponer mejoras con DeepSeek" : "Configura DEEPSEEK_API_KEY en Replit Secrets"}
               className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono tracking-widest uppercase text-[#555] border border-[#222] hover:border-[#ff003c]/30 hover:text-[#ff003c]/70 hover:bg-[#ff003c]/5 transition-all disabled:opacity-30"
             >
-              <Wrench className="h-2.5 w-2.5" /> Optimize
+              <Wrench className="h-2.5 w-2.5" /> Mejorar
             </button>
             <button
               onClick={() => setInput("Fix error: ")}

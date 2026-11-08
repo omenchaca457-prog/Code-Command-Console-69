@@ -29,9 +29,7 @@ router.get("/workspace/status", async (_req, res) => {
       {
         id: "deepseek",
         name: "DeepSeek",
-        configured: Boolean(
-          process.env.DEEPSEEK_API_KEY || process.env.deepseek,
-        ),
+        configured: Boolean(process.env.DEEPSEEK_API_KEY),
       },
       {
         id: "gemini",

@@ -14,7 +14,7 @@ const services = [
   {
     name: "DevTerminal",
     packageName: "@workspace/devterminal",
-    env: { NODE_ENV: "development", PORT: process.env.WEB_PORT || "21612", BASE_PATH: "/", API_PROXY_TARGET: `http://127.0.0.1:${process.env.API_PORT || "3000"}` },
+    env: { NODE_ENV: "development", PORT: process.env.WEB_PORT || "21612", BASE_PATH: "/" },
   },
 ];
 

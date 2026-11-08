@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   ChevronRight,
   Command,
+  Database,
+  Grid3X3,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -21,6 +23,48 @@ import {
 } from "@/components/ui/command";
 import { NAV_GROUPS, WORKSPACE_MODULES } from "@/lib/workspace-navigation";
 import { useWorkspaceStatus } from "@/lib/workspace-status";
+import { useHealthCheck } from "@workspace/api-client-react";
+
+const TOOLS_CENTER = {
+  href: "/tools-center",
+  label: "Todas las herramientas",
+};
+
+type DatabaseHealth = {
+  primary: "ready" | "unavailable" | "not_configured" | "invalid_configuration";
+  replica: "ready" | "not_initialized" | "unavailable" | "not_configured" | "invalid_configuration";
+  replication: {
+    state: "active" | "disabled" | "uninitialized" | "degraded" | "migration_pending" | "rebaseline_required";
+    enabled: boolean;
+    pending: number;
+    failed: number;
+    lagMs: number | null;
+    lastSuccessAt: string | null;
+    lastErrorCode: string | null;
+  };
+};
+
+function databaseStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    ready: "Conectada",
+    unavailable: "No disponible",
+    not_configured: "No configurada",
+    not_initialized: "Sin inicializar",
+    active: "Activa",
+    disabled: "Desactivada",
+    uninitialized: "Pendiente de inicializar",
+    degraded: "Degradada",
+    migration_pending: "Migraciones pendientes",
+    invalid_configuration: "Configuración inválida",
+    rebaseline_required: "Requiere reconciliación",
+  };
+  return labels[status] ?? "Sin verificar";
+}
+
+function formatReplicationLag(lagMs: number | null) {
+  if (lagMs === null) return "—";
+  return lagMs < 1_000 ? `${lagMs} ms` : `${(lagMs / 1_000).toFixed(1)} s`;
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location, navigate] = useLocation();
@@ -34,8 +78,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const sidebarRef = useRef<HTMLElement>(null);
   const mobileButtonRef = useRef<HTMLButtonElement>(null);
   const { data: status, isPending } = useWorkspaceStatus();
+  const { data: apiHealth } = useHealthCheck();
+  const [databaseHealth, setDatabaseHealth] = useState<DatabaseHealth | null>(null);
   const active = WORKSPACE_MODULES.find((item) => item.href === path);
+  const activeLabel = active?.label ?? (
+    path === "/settings"
+      ? "Configuración"
+      : path === TOOLS_CENTER.href
+        ? TOOLS_CENTER.label
+        : "Página no encontrada"
+  );
   const online = status?.database === "connected";
+  const databaseIndicatorClass = !databaseHealth
+    ? "bg-[#777]"
+    : databaseHealth.primary === "unavailable" || databaseHealth.replica === "unavailable"
+      ? "bg-[#ff003c]"
+      : databaseHealth.primary === "ready" && databaseHealth.replica === "ready"
+        ? "bg-[#00ff41]"
+        : "bg-[#ffd166]";
 
   useEffect(() => {
     const query = window.matchMedia("(max-width: 760px)");
@@ -48,9 +108,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    document.title = `${active?.label ?? (path === "/settings" ? "Configuración" : "Página no encontrada")} · DevTerminal`;
+    document.title = `${activeLabel} · DevTerminal`;
     setMobileOpen(false);
-  }, [path, active?.label]);
+  }, [path, activeLabel]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/replication/status", { cache: "no-store" });
+        if (!response.ok) throw new Error("Database status unavailable");
+        const result = await response.json() as DatabaseHealth;
+        if (!cancelled) setDatabaseHealth(result);
+      } catch {
+        if (!cancelled) setDatabaseHealth(null);
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -140,6 +220,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <span className="workspace-local">LOCAL</span>
         </div>
         <nav className="workspace-nav">
+          <Link
+            href={TOOLS_CENTER.href}
+            className={`workspace-nav-link tool-catalog-link ${path === TOOLS_CENTER.href ? "is-active" : ""}`}
+            aria-current={path === TOOLS_CENTER.href ? "page" : undefined}
+            title={collapsed ? TOOLS_CENTER.label : undefined}
+          >
+            <Grid3X3 size={17} strokeWidth={1.8} />
+            <span>{TOOLS_CENTER.label}</span>
+          </Link>
           {NAV_GROUPS.map((group) => (
             <div className="nav-group" key={group}>
               <span className="nav-group-label">{group}</span>
@@ -212,12 +301,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </button>
             <span className="breadcrumb-workspace">Workspace</span>
             <ChevronRight size={13} />
-            <span>
-              {active?.label ??
-                (path === "/settings"
-                  ? "Configuración"
-                  : "Página no encontrada")}
-            </span>
+            <span>{activeLabel}</span>
           </div>
           <div className="topbar-actions">
             <button
@@ -230,9 +314,38 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <kbd>⌘ K</kbd>
             </button>
             <span className="topbar-divider" />
-            <span className="profile-avatar" title="Workspace local">
-              DT
+            <span className="workspace-api-indicator" aria-label={apiHealth?.status === "ok" ? "API en línea" : "API no disponible"}>
+              <span className={`status-dot ${apiHealth?.status === "ok" ? "is-online" : "is-offline"}`} />
+              <span className="hidden sm:inline">API</span>
             </span>
+            <details className="workspace-db-details">
+              <summary
+                aria-label="Estado de PostgreSQL primaria y réplica"
+                className="workspace-db-summary"
+              >
+                <span className={`status-dot ${databaseIndicatorClass}`} />
+                <Database size={14} />
+                <span className="hidden sm:inline">DB</span>
+              </summary>
+              <section className="workspace-db-popover" aria-label="Salud de bases de datos">
+                <h2>Salud PostgreSQL</h2>
+                <dl>
+                  <div><dt>Primaria Replit</dt><dd>{databaseStatusLabel(databaseHealth?.primary ?? "not_configured")}</dd></div>
+                  <div><dt>Réplica Neon</dt><dd>{databaseStatusLabel(databaseHealth?.replica ?? "not_configured")}</dd></div>
+                  <div><dt>Replicación</dt><dd>{databaseStatusLabel(databaseHealth?.replication.state ?? "uninitialized")}</dd></div>
+                  <div className="workspace-db-metrics">
+                    <span>Lag: <strong>{formatReplicationLag(databaseHealth?.replication.lagMs ?? null)}</strong></span>
+                    <span>Cola: <strong>{databaseHealth?.replication.pending ?? "—"}</strong></span>
+                    <span>Fallidos: <strong>{databaseHealth?.replication.failed ?? "—"}</strong></span>
+                    <span>Último éxito: <strong>{databaseHealth?.replication.lastSuccessAt ? new Date(databaseHealth.replication.lastSuccessAt).toLocaleTimeString() : "—"}</strong></span>
+                  </div>
+                  {databaseHealth?.replication.lastErrorCode && (
+                    <div><dt>Último error</dt><dd>{databaseHealth.replication.lastErrorCode}</dd></div>
+                  )}
+                </dl>
+                {!databaseHealth && <p>Estado sin verificar; la interfaz sigue disponible.</p>}
+              </section>
+            </details>
           </div>
         </header>
         <main id="workspace-main" className="workspace-main" tabIndex={-1}>
@@ -240,13 +353,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </main>
         <footer className="workspace-statusbar">
           <span>
-            <span
-              className={`status-dot ${online ? "is-online" : "is-offline"}`}
-            />
+            <span className={`status-dot ${online ? "is-online" : "is-offline"}`} />
             {online ? "Sistema conectado" : "Servicios no disponibles"}
           </span>
           <span className="statusbar-module">
-            {active?.label ?? "Workspace"}
+            {activeLabel}
           </span>
           <button onClick={() => setPaletteOpen(true)}>
             <Command size={12} /> Paleta de comandos <kbd>Ctrl K</kbd>
@@ -283,6 +394,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </CommandGroup>
           ))}
           <CommandGroup heading="Workspace">
+            <CommandItem
+              value={`${TOOLS_CENTER.label} catálogo módulos herramientas`}
+              onSelect={() => {
+                navigate(TOOLS_CENTER.href);
+                setPaletteOpen(false);
+              }}
+            >
+              <Grid3X3 size={17} />
+              {TOOLS_CENTER.label}
+            </CommandItem>
             <CommandItem
               onSelect={() => {
                 navigate("/settings");

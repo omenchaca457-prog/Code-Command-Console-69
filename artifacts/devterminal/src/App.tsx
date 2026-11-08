@@ -25,11 +25,13 @@ const Cortex = lazy(() => import("@/pages/cortex"));
 const Creator = lazy(() => import("@/pages/creator"));
 const CoherenceSimulator = lazy(() => import("@/pages/coherence-simulator"));
 const Trading = lazy(() => import("@/pages/trading"));
+const ToolsDirectory = lazy(() => import("@/pages/tools-center"));
 
 const PERSISTENT_PAGES: Array<{ path: string; Component: ComponentType }> = [
   { path: "/", Component: Overview },
   { path: "/terminal", Component: TerminalPage },
   { path: "/settings", Component: Settings },
+  { path: "/tools-center", Component: ToolsDirectory },
   { path: "/editor", Component: Home },
   { path: "/runner", Component: Runner },
   { path: "/snippets", Component: Snippets },
@@ -44,7 +46,7 @@ const PERSISTENT_PAGES: Array<{ path: string; Component: ComponentType }> = [
 ];
 
 function normalizePath(path: string) {
-  const normalized = path.replace(/\/+$/, "");
+  const normalized = path.split(/[?#]/, 1)[0].replace(/\/+$/, "");
   return normalized || "/";
 }
 

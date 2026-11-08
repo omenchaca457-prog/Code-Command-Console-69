@@ -163,9 +163,9 @@ export default function Settings() {
           <div>
             <h2>Conecta DeepSeek</h2>
             <p>
-              Configura la variable <code>DEEPSEEK_API_KEY</code> en el entorno
-              del servidor y reinicia la aplicación. El asistente utiliza la
-              integración original del proyecto.
+              Configura <code>DEEPSEEK_API_KEY</code> en Replit Secrets y
+              reinicia la aplicación. El valor permanece en el servidor; la
+              interfaz solo consulta si existe.
             </p>
           </div>
           <button
