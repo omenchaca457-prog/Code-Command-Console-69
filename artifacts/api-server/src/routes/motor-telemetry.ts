@@ -20,7 +20,8 @@ export function attachMotorTelemetry(
 }
 
 export async function publishMotorHighCoherence(sample: CoherenceSample) {
-  const { db, neuralEventsTable } = await import("@workspace/db");
+  const { databaseConfigured, db, neuralEventsTable } = await import("@workspace/db");
+  if (!databaseConfigured) return;
   const { publishNeuralEvent } = await import("./neural-event-bus.ts");
   const [event] = await db.insert(neuralEventsTable).values({
     origin: "motor",

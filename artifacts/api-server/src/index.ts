@@ -6,7 +6,11 @@ import { persistSimulationSample } from "./routes/coherence-simulation";
 import { attachMotorTelemetry, publishMotorHighCoherence } from "./routes/motor-telemetry";
 import { initializeAgentTelemetry } from "./routes/agent-telemetry-initialization";
 import { attachTerminalWS } from "./routes/terminal";
-import { pool } from "@workspace/db";
+import {
+  databaseConfigured,
+  databaseConfigurationState,
+  pool,
+} from "@workspace/db";
 import {
   configureNeuralEventNotifier,
   publishRemoteNeuralEvent,
@@ -47,7 +51,9 @@ const neuralEventTransport = new PostgresNeuralEventTransport({
   loadLatestEventId: () => loadLatestNeuralEventId(pool),
   onEvent: publishRemoteNeuralEvent,
 });
-configureNeuralEventNotifier((eventId) => neuralEventTransport.publish(eventId));
+if (databaseConfigured) {
+  configureNeuralEventNotifier((eventId) => neuralEventTransport.publish(eventId));
+}
 
 const detachMotorTelemetry = attachMotorTelemetry({
   stopSimulation, startSimulation, subscribeToSimulation, getSimulationStatus,
@@ -63,9 +69,16 @@ let shuttingDown = false;
 const sleep = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
-void neuralEventTransport.start().catch((error: unknown) => {
-  logger.warn({ err: error }, "Neural event transport could not start; its retry loop will recover");
-});
+if (databaseConfigured) {
+  void neuralEventTransport.start().catch((error: unknown) => {
+    logger.warn({ err: error }, "Neural event transport could not start; its retry loop will recover");
+  });
+} else {
+  logger.warn(
+    { databaseConfigurationState },
+    "PostgreSQL is not configured; terminal and snippet CRUD use process-local memory",
+  );
+}
 
 async function initializeDatabaseBackedTelemetry() {
   let attempt = 0;
@@ -91,11 +104,16 @@ async function initializeDatabaseBackedTelemetry() {
   }
 }
 
-void initializeDatabaseBackedTelemetry();
+if (databaseConfigured) {
+  void initializeDatabaseBackedTelemetry();
+}
 
-process.once("SIGTERM", () => {
+let shutdownStarted = false;
+async function shutdown(signal: string) {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
   shuttingDown = true;
-  logger.info("SIGTERM recibido; cerrando servidor y pool de PostgreSQL");
+  logger.info({ signal }, "Cerrando servidor y pool de PostgreSQL");
   stopSimulation();
   detachMotorTelemetry();
   for (const client of terminalWss.clients) {
@@ -116,4 +134,7 @@ process.once("SIGTERM", () => {
         process.exitCode = 1;
       });
   });
-});
+}
+
+process.once("SIGTERM", () => void shutdown("SIGTERM"));
+process.once("SIGINT", () => void shutdown("SIGINT"));

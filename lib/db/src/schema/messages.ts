@@ -1,5 +1,6 @@
 import {
   integer,
+  index,
   pgTable,
   serial,
   text,
@@ -27,6 +28,7 @@ export const messages = pgTable(
   },
   (table) => [
     uniqueIndex("messages_idempotency_key_unique").on(table.idempotencyKey),
+    index("messages_conversation_id_id_idx").on(table.conversationId, table.id),
   ],
 );
 

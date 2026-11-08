@@ -66,7 +66,8 @@ const defaultSimulator: CoherenceSimulator = {
 };
 
 export async function persistSimulationSample(sample: CoherenceSample): Promise<void> {
-  const { db, simulationLogsTable } = await import("@workspace/db");
+  const { databaseConfigured, db, simulationLogsTable } = await import("@workspace/db");
+  if (!databaseConfigured) return;
   await db.insert(simulationLogsTable).values({
     vector: sample.vector,
     coherence: sample.coherence,

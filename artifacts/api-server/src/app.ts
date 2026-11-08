@@ -6,6 +6,7 @@ import { logger } from "./lib/logger";
 import { recordServerRequest } from "./lib/runtime-diagnostics";
 import { disableTelemetryCache } from "./routes/telemetry-cache";
 import { createRateLimiter } from "./lib/rate-limit";
+import { DatabaseUnavailableError } from "@workspace/db";
 
 const app: Express = express();
 
@@ -58,5 +59,16 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/api", router);
+
+app.use((error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (error instanceof DatabaseUnavailableError) {
+    req.log?.warn({ event: "database_not_configured" }, "La persistencia PostgreSQL no está disponible");
+    res.status(503).json({
+      error: "La persistencia no está disponible. Configure DATABASE_URL en Replit Secrets.",
+    });
+    return;
+  }
+  next(error);
+});
 
 export default app;
