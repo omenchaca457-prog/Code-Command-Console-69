@@ -31,6 +31,27 @@ export function createHealthRouter(
     }
   });
 
+  router.get("/replica-readyz", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const { neonConfigurationStateValue, neonConfigured, neonPool } = await import("@workspace/db");
+    if (!neonConfigured || !neonPool) {
+      res.status(503).json({
+        status: neonConfigurationStateValue === "invalid" ? "invalid_configuration" : "not_configured",
+      });
+      return;
+    }
+    try {
+      await neonPool.query("SELECT 1");
+      res.json({ status: "ready" });
+    } catch (error) {
+      const code = typeof error === "object" && error !== null && "code" in error
+        ? String(error.code)
+        : "unknown";
+      req.log?.warn({ code }, "Neon replica readiness probe failed");
+      res.status(503).json({ status: "not_ready" });
+    }
+  });
+
   return router;
 }
 

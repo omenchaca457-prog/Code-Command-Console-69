@@ -14,6 +14,7 @@ import openAiRouter from "./openai";
 import coherenceSimulationRouter from "./coherence-simulation";
 import agentsSimulationRouter from "./agents-simulation";
 import tradingStatusRouter from "./trading-status";
+import replicationStatusRouter from "./replication-status";
 import { disableTelemetryCache } from "./telemetry-cache";
 
 const router: IRouter = Router();
@@ -37,6 +38,7 @@ router.use(openAiRouter);
 router.use(coherenceSimulationRouter);
 router.use(agentsSimulationRouter);
 router.use(tradingStatusRouter);
+router.use(replicationStatusRouter);
 router.use(autorunRouter);
 
 export default router;

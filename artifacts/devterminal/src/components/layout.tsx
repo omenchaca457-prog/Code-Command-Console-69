@@ -22,12 +22,50 @@ const TOOL_CENTER = {
   label: "Todas las herramientas",
 };
 
+type DatabaseHealth = {
+  primary: "ready" | "unavailable" | "not_configured" | "invalid_configuration";
+  replica: "ready" | "not_initialized" | "unavailable" | "not_configured" | "invalid_configuration";
+  replication: {
+    state: "active" | "disabled" | "uninitialized" | "degraded" | "migration_pending" | "rebaseline_required";
+    enabled: boolean;
+    pending: number;
+    failed: number;
+    lagMs: number | null;
+    lastSuccessAt: string | null;
+    lastErrorCode: string | null;
+  };
+};
+
+function statusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    ready: "Conectada",
+    unavailable: "No disponible",
+    not_configured: "No configurada",
+    not_initialized: "Sin inicializar",
+    active: "Activa",
+    disabled: "Desactivada",
+    uninitialized: "Pendiente de inicializar",
+    degraded: "Degradada",
+    migration_pending: "Migraciones pendientes",
+    invalid_configuration: "Configuración inválida",
+    rebaseline_required: "Requiere reconciliación",
+  };
+  return labels[status] ?? "Sin verificar";
+}
+
+function formatLag(lagMs: number | null): string {
+  if (lagMs === null) return "—";
+  if (lagMs < 1_000) return `${lagMs} ms`;
+  return `${(lagMs / 1_000).toFixed(1)} s`;
+}
+
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const activeLocation = location === "/" ? "/" : location.replace(/\/+$/, "");
   const { data: health } = useHealthCheck();
+  const [databaseHealth, setDatabaseHealth] = useState<DatabaseHealth | null>(null);
   const defaultTitle = useRef(document.title);
 
   const groups = useMemo(
@@ -47,6 +85,26 @@ export function Layout({ children }: { children: ReactNode }) {
       document.title = defaultTitle.current;
     }
   }, [activeLocation]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/replication/status", { cache: "no-store" });
+        if (!response.ok) throw new Error("Database status unavailable");
+        const result = await response.json() as DatabaseHealth;
+        if (!cancelled) setDatabaseHealth(result);
+      } catch {
+        if (!cancelled) setDatabaseHealth(null);
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const renderDesktopLink = (
     item: typeof toolModules[number] | typeof TOOL_CENTER,
@@ -155,6 +213,78 @@ export function Layout({ children }: { children: ReactNode }) {
               <span className={`h-2 w-2 rounded-full ${health?.status === "ok" ? "bg-[#00ff41]" : "bg-[#ff003c]"}`} />
               <span className="hidden sm:inline">{health?.status === "ok" ? "API ONLINE" : "API OFFLINE"}</span>
             </div>
+
+            <details className="relative">
+              <summary
+                aria-label="Estado de PostgreSQL primaria y réplica"
+                className="flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center gap-2 border border-[#00ffff]/25 px-2 font-mono text-[10px] uppercase tracking-wider text-[#a9faff] hover:bg-[#00ffff]/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00ffff] [&::-webkit-details-marker]:hidden"
+              >
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    databaseHealth?.primary === "ready"
+                      ? "bg-[#00ff41]"
+                      : databaseHealth?.primary === "unavailable"
+                        ? "bg-[#ff003c]"
+                        : "bg-[#777]"
+                  }`}
+                />
+                <span>DB</span>
+              </summary>
+              <section
+                aria-label="Salud de bases de datos"
+                className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[min(88vw,340px)] border border-[#00ffff]/25 bg-[#080b0d] p-4 font-mono text-[11px] shadow-2xl shadow-black/80"
+              >
+                <h2 className="mb-3 text-[10px] uppercase tracking-[0.18em] text-[#00ffff]">
+                  Salud PostgreSQL
+                </h2>
+                <dl className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-[#888]">Primaria Replit</dt>
+                    <dd className={databaseHealth?.primary === "ready" ? "text-[#00ff41]" : "text-[#aaa]"}>
+                      {statusLabel(databaseHealth?.primary ?? "not_configured")}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-[#888]">Réplica Neon</dt>
+                    <dd className={databaseHealth?.replica === "ready" ? "text-[#00ff41]" : "text-[#aaa]"}>
+                      {statusLabel(databaseHealth?.replica ?? "not_configured")}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-[#888]">Replicación</dt>
+                    <dd className="text-[#d6d6d6]">
+                      {statusLabel(databaseHealth?.replication.state ?? "uninitialized")}
+                    </dd>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 border-t border-white/10 pt-3 text-[#888]">
+                    <span>Lag: <strong className="text-white">{formatLag(databaseHealth?.replication.lagMs ?? null)}</strong></span>
+                    <span>Cola: <strong className="text-white">{databaseHealth?.replication.pending ?? "—"}</strong></span>
+                    <span>Fallidos: <strong className="text-white">{databaseHealth?.replication.failed ?? "—"}</strong></span>
+                    <span>
+                      Último éxito:{" "}
+                      <strong className="text-white">
+                        {databaseHealth?.replication.lastSuccessAt
+                          ? new Date(databaseHealth.replication.lastSuccessAt).toLocaleTimeString()
+                          : "—"}
+                      </strong>
+                    </span>
+                  </div>
+                  {databaseHealth?.replication.lastErrorCode && (
+                    <div className="border-t border-white/10 pt-3 text-[#888]">
+                      Último error:{" "}
+                      <strong className="break-all text-[#ff7777]">
+                        {databaseHealth.replication.lastErrorCode}
+                      </strong>
+                    </div>
+                  )}
+                </dl>
+                {!databaseHealth && (
+                  <p className="mt-3 border-t border-white/10 pt-3 text-[#888]">
+                    Estado sin verificar; la interfaz sigue disponible.
+                  </p>
+                )}
+              </section>
+            </details>
 
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
               <button

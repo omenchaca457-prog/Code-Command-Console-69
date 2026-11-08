@@ -312,6 +312,9 @@ BEGIN
       LANGUAGE plpgsql
       AS $body$
       BEGIN
+        IF current_setting('ccc_replication_apply', true) = '1' THEN
+          RETURN NEW;
+        END IF;
         NEW.updated_at := now();
         RETURN NEW;
       END

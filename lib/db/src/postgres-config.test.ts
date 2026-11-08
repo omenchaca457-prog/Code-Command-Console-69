@@ -10,6 +10,14 @@ import {
 describe("PostgreSQL configuration", () => {
   it("uses only DATABASE_URL and supports an unconfigured local mode", () => {
     assert.equal(readDatabaseUrl({}), null);
+    assert.equal(readDatabaseUrl({}, "NEON_DATABASE_URL"), null);
+    assert.equal(
+      readDatabaseUrl(
+        { DATABASE_URL: "postgresql://primary.invalid/db" },
+        "NEON_DATABASE_URL",
+      ),
+      null,
+    );
     assert.equal(
       readDatabaseUrl({
         PGHOST: "ignored.example",
@@ -48,5 +56,12 @@ describe("PostgreSQL configuration", () => {
     };
     assert.equal(typeof client.connectionParameters.ssl, "object");
     assert.notEqual(client.connectionParameters.ssl, false);
+
+    const neonConfig = createPostgresPoolConfig(
+      "postgresql://sample:sample@replica.example.invalid/app?sslmode=require",
+      { max: 4 },
+    );
+    assert.equal(neonConfig.max, 4);
+    assert.equal(new URL(neonConfig.connectionString!).searchParams.get("sslmode"), "verify-full");
   });
 });

@@ -9,7 +9,10 @@ import { attachTerminalWS } from "./routes/terminal";
 import {
   databaseConfigured,
   databaseConfigurationState,
+  neonConfigured,
+  neonPool,
   pool,
+  startReplicaWorker,
 } from "@workspace/db";
 import {
   configureNeuralEventNotifier,
@@ -44,6 +47,12 @@ pool.on("error", (error: Error & { code?: string }) => {
     "PostgreSQL idle client failed; the pool will discard it and the API will remain online",
   );
 });
+neonPool?.on("error", (error: Error & { code?: string }) => {
+  logger.warn(
+    { code: error.code ?? "unknown" },
+    "Neon replica pool client failed; primary PostgreSQL and the API remain online",
+  );
+});
 
 const neuralEventTransport = new PostgresNeuralEventTransport({
   pool,
@@ -58,6 +67,11 @@ if (databaseConfigured) {
 const detachMotorTelemetry = attachMotorTelemetry({
   stopSimulation, startSimulation, subscribeToSimulation, getSimulationStatus,
 }, publishMotorHighCoherence);
+const replicaWorker = databaseConfigured && neonConfigured && neonPool
+  ? startReplicaWorker(pool, neonPool, {
+      onError: (code) => logger.warn({ code }, "Neon replication worker will retry"),
+    })
+  : null;
 startSimulation(persistSimulationSample);
 logger.info("Motor 5.5 iniciado: telemetría autónoma del servidor");
 
@@ -113,7 +127,7 @@ async function shutdown(signal: string) {
   if (shutdownStarted) return;
   shutdownStarted = true;
   shuttingDown = true;
-  logger.info({ signal }, "Cerrando servidor y pool de PostgreSQL");
+  logger.info({ signal }, "Cerrando servidor y pools de PostgreSQL");
   stopSimulation();
   detachMotorTelemetry();
   for (const client of terminalWss.clients) {
@@ -127,8 +141,9 @@ async function shutdown(signal: string) {
     void neuralEventTransport
       .stop()
       .then(() => new Promise<void>((resolve) => terminalWss.close(() => resolve())))
-      .then(() => pool.end())
-      .then(() => logger.info("Pool de PostgreSQL cerrado"))
+      .then(() => replicaWorker?.stop())
+      .then(() => Promise.allSettled([pool.end(), neonPool?.end()]))
+      .then(() => logger.info("Pools de PostgreSQL cerrados"))
       .catch((poolError) => {
         logger.error({ err: poolError }, "Error cerrando el pool de PostgreSQL");
         process.exitCode = 1;

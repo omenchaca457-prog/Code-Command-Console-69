@@ -2,15 +2,16 @@ import type { PoolConfig } from "pg";
 
 export class DatabaseConfigurationError extends Error {
   constructor() {
-    super("DATABASE_URL must be a valid PostgreSQL connection URL.");
+    super("The configured PostgreSQL URL is invalid.");
     this.name = "DatabaseConfigurationError";
   }
 }
 
 export function readDatabaseUrl(
   environment: Record<string, string | undefined>,
+  variableName: "DATABASE_URL" | "NEON_DATABASE_URL" = "DATABASE_URL",
 ): string | null {
-  const value = environment.DATABASE_URL?.trim();
+  const value = environment[variableName]?.trim();
   if (!value) return null;
 
   try {
@@ -25,7 +26,10 @@ export function readDatabaseUrl(
   return value;
 }
 
-export function createPostgresPoolConfig(databaseUrl: string): PoolConfig {
+export function createPostgresPoolConfig(
+  databaseUrl: string,
+  options: { max?: number } = {},
+): PoolConfig {
   const validatedUrl = readDatabaseUrl({ DATABASE_URL: databaseUrl });
   if (!validatedUrl) throw new DatabaseConfigurationError();
 
@@ -42,7 +46,7 @@ export function createPostgresPoolConfig(databaseUrl: string): PoolConfig {
   // alongside connectionString can override node-postgres URL parsing.
   return {
     connectionString: normalizedUrl.toString(),
-    max: 10,
+    max: options.max ?? 10,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
     keepAlive: true,
