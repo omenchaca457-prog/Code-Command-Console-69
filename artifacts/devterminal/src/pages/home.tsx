@@ -1,3 +1,5 @@
+import "@/lib/monaco";
+import { InlineMarkdown } from "@/components/inline-markdown";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { Play, Save, Bot, Code, Wrench, Bug, ChevronRight, Zap, CheckCircle, XCircle, Package, RefreshCw, Cpu, AlertTriangle } from "lucide-react";
@@ -279,11 +281,7 @@ export default function Home() {
           </pre>
         );
       }
-      let html = part
-        .replace(/\*\*(.*?)\*\*/g, '<strong class="text-[#ff003c]">$1</strong>')
-        .replace(/`(.*?)`/g, '<code style="background:rgba(0,255,65,0.08);color:#00ff41;padding:0 4px">$1</code>')
-        .replace(/\n/g, '<br/>');
-      return <span key={i} dangerouslySetInnerHTML={{ __html: html }} />;
+      return <InlineMarkdown key={i} text={part} />;
     });
   };
 
@@ -346,7 +344,7 @@ export default function Home() {
                 onClick={() => setIsSaveDialogOpen(true)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-mono tracking-widest uppercase text-[#444] border border-[#222] hover:border-[#ff003c]/30 hover:text-[#ff003c]/70 transition-all"
               >
-                <Save className="h-3 w-3" /> SAVE
+                <Save className="h-3 w-3" /> GUARDAR
               </button>
 
               {/* Regular execute */}
@@ -356,7 +354,7 @@ export default function Home() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono tracking-widest uppercase text-[#888] border border-[#333] hover:border-[#00ff41]/40 hover:text-[#00ff41] hover:bg-[#00ff41]/5 transition-all disabled:opacity-40"
               >
                 {executeMutation.isPending ? <div className="h-3 w-3 animate-spin rounded-full border border-[#00ff41] border-t-transparent" /> : <Play className="h-3 w-3" />}
-                RUN
+                EJECUTAR
               </button>
 
               {/* AUTONOMOUS execute — the star */}
@@ -550,12 +548,13 @@ export default function Home() {
       <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
         <DialogContent className="sm:max-w-[400px] bg-[#080808] border border-[#ff003c]/30 shadow-[0_0_40px_#ff003c15]">
           <DialogHeader>
-            <DialogTitle className="font-mono text-xs tracking-[0.2em] uppercase text-[#ff003c]">// SAVE SNIPPET</DialogTitle>
-            <DialogDescription className="font-mono text-[10px] text-[#333] tracking-wider">Commit this code to persistent memory.</DialogDescription>
+            <DialogTitle className="font-mono text-xs tracking-[0.2em] uppercase text-[#ff003c]">Guardar snippet</DialogTitle>
+            <DialogDescription className="font-mono text-[11px] text-[#999] tracking-wider">Ponle un nombre y guárdalo en tu biblioteca.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <Input
-              placeholder="snippet_name"
+              placeholder="Nombre del snippet"
+              aria-label="Nombre del snippet"
               value={snippetTitle}
               onChange={(e) => setSnippetTitle(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSaveSnippet()}
@@ -564,10 +563,10 @@ export default function Home() {
             />
           </div>
           <DialogFooter className="gap-2">
-            <button onClick={() => setIsSaveDialogOpen(false)} className="px-4 py-1.5 font-mono text-[10px] tracking-widest uppercase text-[#555] border border-[#333] hover:border-[#555] hover:text-[#888] transition-all">ABORT</button>
+            <button onClick={() => setIsSaveDialogOpen(false)} className="px-4 py-1.5 font-mono text-[10px] tracking-widest uppercase text-[#555] border border-[#333] hover:border-[#555] hover:text-[#888] transition-all">CANCELAR</button>
             <button onClick={handleSaveSnippet} disabled={createSnippetMutation.isPending}
               className="px-4 py-1.5 font-mono text-[10px] tracking-widest uppercase text-black bg-[#ff003c] hover:bg-[#ff1a52] disabled:opacity-50" style={{ boxShadow: "0 0 12px #ff003c40" }}>
-              {createSnippetMutation.isPending ? "WRITING..." : "COMMIT"}
+              {createSnippetMutation.isPending ? "GUARDANDO..." : "GUARDAR"}
             </button>
           </DialogFooter>
         </DialogContent>

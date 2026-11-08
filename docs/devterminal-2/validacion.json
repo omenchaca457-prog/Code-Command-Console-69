@@ -1,0 +1,43 @@
+{
+  "source_commit": "a0a5d986633b51371d2f39ffbe6e570ba3d8d566",
+  "typecheck": "passed",
+  "full_workspace_build": "passed",
+  "api_tests": {
+    "passed": 92,
+    "skipped_without_database": 2
+  },
+  "frontend_tests": {
+    "passed": 31
+  },
+  "database_tests": {
+    "passed": 4,
+    "note": "Incluye las dos comprobaciones opcionales de PostgreSQL."
+  },
+  "browser": {
+    "passed": 17,
+    "checks": [
+      "Overview uses live server and database status",
+      "Python executes and displays actual output in the editor",
+      "Snippet saves through the API into PostgreSQL",
+      "Editor draft survives reload",
+      "Ctrl+K finds and opens the library",
+      "Library search filters real snippets",
+      "Library exports a usable JSON file",
+      "Terminal WebSocket runs a real shell command",
+      "Terminal reconnects without a stale disconnected state",
+      "Every original module opens without crashing",
+      "AI honestly shows missing configuration without sending requests",
+      "Unknown routes have a useful recovery action",
+      "Desktop navigation has no uncaught JavaScript errors",
+      "Mobile menu navigates and closes; terminal has no page overflow",
+      "Mobile menu supports Escape and restores keyboard focus",
+      "Mobile overview scrolls to library and activity without runtime errors",
+      "Unavailable services and malformed neural-event data do not crash the app"
+    ]
+  },
+  "live_ai_requests": 0,
+  "credentials_in_delivery": false,
+  "remote_repository_modified": true,
+  "delivery_branch": "replica/devterminal-2",
+  "main_branch_modified": false
+}

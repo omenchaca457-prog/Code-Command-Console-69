@@ -59,13 +59,18 @@ export function NeuralProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (data) setEvents((current) => mergeEvents(data, current));
+    if (Array.isArray(data)) {
+      const validEvents = data.map(parseNeuralEvent).filter((event): event is NeuralEvent => event !== null);
+      setEvents((current) => mergeEvents(validEvents, current));
+    }
   }, [data]);
 
   useEffect(() => {
     if (!isFetched) return;
 
-    const afterId = data?.reduce((largest, event) => Math.max(largest, event.id), 0) ?? 0;
+    const afterId = Array.isArray(data)
+      ? data.reduce((largest, event) => Math.max(largest, parseNeuralEvent(event)?.id ?? 0), 0)
+      : 0;
     const source = new EventSource(`/api/neural-events/stream?after=${afterId}`);
     setStreamStatus("connecting");
     source.onopen = () => setStreamStatus("connected");

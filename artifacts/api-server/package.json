@@ -7,7 +7,7 @@
     "dev": "NODE_ENV=development pnpm run build && exec node --enable-source-maps ./dist/index.mjs",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
-    "test": "node --test src/routes/*.test.ts",
+    "test": "tsx --test src/routes/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -37,6 +37,7 @@
     "esbuild-plugin-pino": "^2.3.3",
     "pg": "^8.20.0",
     "pino-pretty": "^13",
-    "thread-stream": "3.1.0"
+    "thread-stream": "3.1.0",
+    "tsx": "catalog:"
   }
 }

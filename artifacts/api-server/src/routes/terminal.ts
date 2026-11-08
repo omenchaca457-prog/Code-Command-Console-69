@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
 import { IncomingMessage, Server } from "http";
 import * as pty from "node-pty";
@@ -24,11 +25,12 @@ export function attachTerminalWS(server: Server) {
 
     const shell = process.env["SHELL"] || "/bin/bash";
 
+    const workspaceRoot = process.env.WORKSPACE_ROOT || process.cwd();
     const ptyProcess = pty.spawn(shell, [], {
       name: "xterm-256color",
       cols,
       rows,
-      cwd: process.env["HOME"] || "/home/runner/workspace",
+      cwd: workspaceRoot,
       env: {
         ...process.env,
         TERM: "xterm-256color",
@@ -36,10 +38,9 @@ export function attachTerminalWS(server: Server) {
         LANG: "en_US.UTF-8",
         LC_ALL: "en_US.UTF-8",
         FORCE_COLOR: "3",
-        NODE_PATH: "/home/runner/workspace/node_modules",
+        NODE_PATH: join(workspaceRoot, "node_modules"),
         PATH: [
-          "/home/runner/workspace/node_modules/.bin",
-          "/nix/store/x5hwjkyng8385q1pqhz8wyqkq0izmhpi-replit-runtime-path/bin",
+          join(workspaceRoot, "node_modules/.bin"),
           "/usr/local/sbin",
           "/usr/local/bin",
           "/usr/sbin",

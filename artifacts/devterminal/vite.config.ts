@@ -5,7 +5,7 @@ import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
 const isBuild = process.argv.includes("build");
-const rawPort = process.env.PORT ?? (isBuild ? "5173" : undefined);
+const rawPort = process.env.PORT ?? "21612";
 
 if (!rawPort) {
   throw new Error(
@@ -19,7 +19,8 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const basePath = process.env.BASE_PATH ?? (isBuild ? "/" : undefined);
+const basePath = process.env.BASE_PATH ?? "/";
+const apiProxy = { target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:3000", changeOrigin: true, ws: true };
 
 if (!basePath) {
   throw new Error(
@@ -60,6 +61,7 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    proxy: { "/api": apiProxy },
     port,
     strictPort: true,
     host: "0.0.0.0",
@@ -69,6 +71,7 @@ export default defineConfig({
     },
   },
   preview: {
+    proxy: { "/api": apiProxy },
     port,
     host: "0.0.0.0",
     allowedHosts: true,

@@ -151,6 +151,7 @@ export default function TerminalPage() {
     wsRef.current = ws;
 
     ws.onopen = () => {
+      if (wsRef.current !== ws) return;
       setStatus("connected");
       setSessionCount(s => s + 1);
       if (fitRef.current) {
@@ -160,15 +161,16 @@ export default function TerminalPage() {
     };
 
     ws.onmessage = (event) => {
+      if (wsRef.current !== ws) return;
       term.write(typeof event.data === "string" ? event.data : new Uint8Array(event.data));
     };
 
     ws.onclose = () => {
-      setStatus("disconnected");
+      if (wsRef.current === ws) setStatus("disconnected");
     };
 
     ws.onerror = () => {
-      setStatus("disconnected");
+      if (wsRef.current === ws) setStatus("disconnected");
     };
   }, [sendResize]);
 
@@ -455,7 +457,7 @@ export default function TerminalPage() {
   };
 
   return (
-    <div className={`flex flex-col bg-[#080808] ${isFullscreen ? "fixed inset-0 z-50" : "h-full"}`}>
+    <div className={`terminal-workspace flex flex-col bg-[#080808] ${isFullscreen ? "fixed inset-0 z-50" : "h-full"}`}>
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#ff003c]/15 bg-[#060606] flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -520,13 +522,14 @@ export default function TerminalPage() {
             <Trash2 className="h-3 w-3" />
             <span>{isClearingChat ? "LIMPIANDO…" : "LIMPIAR CHAT"}</span>
           </button>
-          <button onClick={() => setShowSearch(v => !v)} className={`p-1.5 border transition-colors ${showSearch ? "border-[#ff003c]/30 text-[#ff003c]/60" : "border-transparent text-[#333] hover:text-[#666] hover:border-[#222]"}`}>
+          <button aria-label="Buscar en la terminal" onClick={() => setShowSearch(v => !v)} className={`p-1.5 border transition-colors ${showSearch ? "border-[#ff003c]/30 text-[#ff003c]/60" : "border-transparent text-[#333] hover:text-[#666] hover:border-[#222]"}`}>
             <Search className="h-3 w-3" />
           </button>
-          <button onClick={() => setIsFullscreen(v => !v)} className="p-1.5 border border-transparent text-[#333] hover:text-[#666] hover:border-[#222] transition-colors">
+          <button aria-label={isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"} onClick={() => setIsFullscreen(v => !v)} className="p-1.5 border border-transparent text-[#333] hover:text-[#666] hover:border-[#222] transition-colors">
             {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
           </button>
           <button
+            aria-label="Reconectar terminal"
             onClick={handleReconnect}
             disabled={status === "connecting"}
             className="p-1.5 border border-transparent text-[#333] hover:text-[#ff003c]/60 hover:border-[#ff003c]/20 transition-colors disabled:opacity-30"

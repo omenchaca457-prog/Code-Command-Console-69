@@ -80,7 +80,8 @@
     "vaul": "^1.1.2",
     "vite": "catalog:",
     "wouter": "^3.3.5",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "tsx": "catalog:"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",

@@ -1,111 +1,300 @@
 import { Link, useLocation } from "wouter";
-import { TerminalSquare, LibrarySquare, Cpu, ShieldAlert, Eye, Play, Network, Bot, Code2, BrainCircuit, Sparkles, Activity, TrendingUp } from "lucide-react";
-import { useEffect, useRef } from "react";
-import { useHealthCheck } from "@workspace/api-client-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  ChevronRight,
+  Command,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  Settings2,
+  Terminal,
+  X,
+} from "lucide-react";
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { NAV_GROUPS, WORKSPACE_MODULES } from "@/lib/workspace-navigation";
+import { useWorkspaceStatus } from "@/lib/workspace-status";
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
-  const activeLocation = location === "/" ? "/" : location.replace(/\/+$/, "");
-  const { data: health } = useHealthCheck();
-  const defaultTitle = useRef(document.title);
-  useEffect(() => {
-    document.title = activeLocation === "/trading" ? "MÁQUINA 4105 // TRADING" : defaultTitle.current;
-  }, [activeLocation]);
+  const [location, navigate] = useLocation();
+  const path = location.split("?")[0].replace(/\/+$/, "") || "/";
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    () => window.matchMedia("(max-width: 760px)").matches,
+  );
+  const [collapsed, setCollapsed] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const mobileButtonRef = useRef<HTMLButtonElement>(null);
+  const { data: status, isPending } = useWorkspaceStatus();
+  const active = WORKSPACE_MODULES.find((item) => item.href === path);
+  const online = status?.database === "connected";
 
-  const navItems = [
-    { href: "/", label: "Terminal", icon: TerminalSquare, color: "#ff003c" },
-    { href: "/editor", label: "Editor", icon: Code2, color: "#ff003c" },
-    { href: "/runner", label: "Runner", icon: Play, color: "#ff003c" },
-    { href: "/snippets", label: "Library", icon: LibrarySquare, color: "#ff003c" },
-    { href: "/ai", label: "AI", icon: Cpu, color: "#ff003c" },
-    { href: "/tools", label: "Tools", icon: ShieldAlert, color: "#ff003c" },
-    { href: "/neural", label: "Neural", icon: Network, color: "#00ffff" },
-    { href: "/agents", label: "Agents", icon: Bot, color: "#a78bfa" },
-    { href: "/cortex", label: "Cortex IA", icon: BrainCircuit, color: "#00ff41" },
-    { href: "/creator", label: "CREATOR", icon: Sparkles, color: "#ff4de1" },
-    { href: "/motor", label: "MOTOR 5.5", icon: Activity, color: "#00f0ff" },
-    { href: "/trading", label: "TRADING", icon: TrendingUp, color: "#00f0ff" },
-  ];
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 760px)");
+    const update = () => {
+      setIsMobile(query.matches);
+      if (!query.matches) setMobileOpen(false);
+    };
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    document.title = `${active?.label ?? (path === "/settings" ? "Configuración" : "Página no encontrada")} · DevTerminal`;
+    setMobileOpen(false);
+  }, [path, active?.label]);
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((value) => !value);
+      }
+      if (event.key === "Escape") setMobileOpen(false);
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, []);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const sidebar = sidebarRef.current;
+    const first = sidebar?.querySelector<HTMLElement>("a, button");
+    first?.focus();
+    const trapFocus = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || !sidebar) return;
+      const elements = [
+        ...sidebar.querySelectorAll<HTMLElement>("a, button"),
+      ].filter((item) => item.getClientRects().length > 0);
+      const firstElement = elements[0];
+      const lastElement = elements.at(-1);
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement?.focus();
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement?.focus();
+      }
+    };
+    window.addEventListener("keydown", trapFocus);
+    return () => {
+      window.removeEventListener("keydown", trapFocus);
+      mobileButtonRef.current?.focus();
+    };
+  }, [mobileOpen]);
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#080808] screen-flicker">
-      <header className="flex h-11 items-center justify-between border-b border-[#ff003c]/20 bg-[#060606] px-3 text-foreground relative flex-shrink-0">
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ background: "linear-gradient(90deg, rgba(255,0,60,0.05) 0%, transparent 60%)" }}
+    <div className={`workspace-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
+      <a className="skip-link" href="#workspace-main">
+        Saltar al contenido
+      </a>
+      {mobileOpen && (
+        <button
+          className="sidebar-backdrop"
+          aria-label="Cerrar navegación"
+          onClick={() => setMobileOpen(false)}
         />
-        <div className="flex items-center gap-3 relative z-10 min-w-0 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-          <Link href="/" className="flex items-center gap-1.5 font-mono text-xs font-bold tracking-[0.2em] uppercase flex-shrink-0">
-            <Eye className="h-3.5 w-3.5 text-[#ff003c]" style={{ filter: "drop-shadow(0 0 5px #ff003c)" }} />
-            <span
-              className="glitch-text text-[#ff003c] hidden lg:block"
-              data-text="DEVTERMINAL"
-              style={{ textShadow: "0 0 8px #ff003c, 0 0 16px #ff003c40" }}
-            >
-              DEVTERMINAL
+      )}
+      <aside
+        ref={sidebarRef}
+        inert={isMobile && !mobileOpen}
+        className={`workspace-sidebar ${mobileOpen ? "is-open" : ""}`}
+        aria-label="Navegación principal"
+      >
+        <div className="workspace-brand-row">
+          <Link
+            href="/"
+            className="workspace-brand"
+            aria-label="DevTerminal, inicio"
+          >
+            <span className="brand-mark">
+              <Terminal size={21} strokeWidth={2.3} />
+            </span>
+            <span className="brand-wordmark">
+              devterminal<span>COMMAND CONSOLE</span>
             </span>
           </Link>
-
-          <div className="w-px h-4 bg-[#ff003c]/15 hidden sm:block flex-shrink-0" />
-
-          <nav className="flex items-center gap-0 text-[10px] font-mono font-semibold tracking-wider uppercase">
-            {navItems.map(({ href, label, icon: Icon, color }) => {
-              const isActive = activeLocation === href;
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className="flex items-center gap-1 px-2 py-1.5 transition-all border whitespace-nowrap flex-shrink-0"
-                  style={isActive ? {
-                    borderColor: color + "40",
-                    color,
-                    background: color + "10",
-                  } : {
-                    borderColor: "transparent",
-                    color: "#333",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) {
-                      (e.currentTarget as HTMLElement).style.color = color + "80";
-                      (e.currentTarget as HTMLElement).style.background = color + "08";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) {
-                      (e.currentTarget as HTMLElement).style.color = "#333";
-                      (e.currentTarget as HTMLElement).style.background = "transparent";
-                    }
-                  }}
-                >
-                  <Icon className="h-3 w-3 flex-shrink-0" />
-                  <span className="hidden sm:block">{label}</span>
-                </Link>
-              );
-            })}
-          </nav>
+          <button
+            type="button"
+            className="mobile-close icon-button"
+            aria-label="Cerrar menú"
+            onClick={() => setMobileOpen(false)}
+          >
+            <X size={18} />
+          </button>
         </div>
-
-        <div className="flex items-center gap-3 relative z-10 flex-shrink-0">
-          {health?.status === "ok" ? (
-            <div className="flex items-center gap-1.5 text-[9px] font-mono tracking-widest uppercase">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#00ff41] opacity-75" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#00ff41]" style={{ boxShadow: "0 0 5px #00ff41" }} />
-              </span>
-              <span className="text-[#00ff41]/50 hidden sm:block">ONLINE</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 text-[9px] font-mono tracking-widest uppercase text-[#ff003c]/50">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#ff003c]" />
-              <span className="hidden sm:block">OFFLINE</span>
-            </div>
-          )}
+        <div className="workspace-switcher">
+          <span className="workspace-avatar">DT</span>
+          <span className="workspace-switcher-copy">
+            Mi workspace<small>Entorno de desarrollo</small>
+          </span>
+          <span className="workspace-local">LOCAL</span>
         </div>
-      </header>
-
-      <main className="relative flex-1 overflow-hidden">
-        {children}
-      </main>
+        <nav className="workspace-nav">
+          {NAV_GROUPS.map((group) => (
+            <div className="nav-group" key={group}>
+              <span className="nav-group-label">{group}</span>
+              {WORKSPACE_MODULES.filter((item) => item.group === group).map(
+                ({ href, label, icon: Icon, badge }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`workspace-nav-link ${path === href ? "is-active" : ""}`}
+                    aria-current={path === href ? "page" : undefined}
+                    title={collapsed ? label : undefined}
+                  >
+                    <Icon size={17} strokeWidth={1.8} />
+                    <span>{label}</span>
+                    {badge && <small>{badge}</small>}
+                  </Link>
+                ),
+              )}
+            </div>
+          ))}
+        </nav>
+        <div className="sidebar-bottom">
+          <Link
+            href="/settings"
+            className={`workspace-nav-link ${path === "/settings" ? "is-active" : ""}`}
+            title="Configuración"
+          >
+            <Settings2 size={17} />
+            <span>Configuración</span>
+          </Link>
+          <div className="sidebar-connection">
+            <span
+              className={`status-dot ${online ? "is-online" : isPending ? "is-pending" : "is-offline"}`}
+            />
+            <span>
+              {isPending
+                ? "Conectando servicios"
+                : online
+                  ? "Servicios conectados"
+                  : "Revisar conexión"}
+            </span>
+            <span className="version-tag">v2.0</span>
+          </div>
+        </div>
+      </aside>
+      <div className="workspace-body" inert={mobileOpen}>
+        <header className="workspace-topbar">
+          <div className="topbar-breadcrumb">
+            <button
+              className="icon-button desktop-collapse"
+              onClick={() => setCollapsed((value) => !value)}
+              aria-label={
+                collapsed ? "Expandir barra lateral" : "Contraer barra lateral"
+              }
+            >
+              {collapsed ? (
+                <PanelLeftOpen size={17} />
+              ) : (
+                <PanelLeftClose size={17} />
+              )}
+            </button>
+            <button
+              ref={mobileButtonRef}
+              className="icon-button mobile-menu"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Abrir navegación"
+              aria-expanded={mobileOpen}
+            >
+              <Menu size={20} />
+            </button>
+            <span className="breadcrumb-workspace">Workspace</span>
+            <ChevronRight size={13} />
+            <span>
+              {active?.label ??
+                (path === "/settings"
+                  ? "Configuración"
+                  : "Página no encontrada")}
+            </span>
+          </div>
+          <div className="topbar-actions">
+            <button
+              className="global-search"
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Buscar módulos"
+            >
+              <Search size={15} />
+              <span>Buscar módulos...</span>
+              <kbd>⌘ K</kbd>
+            </button>
+            <span className="topbar-divider" />
+            <span className="profile-avatar" title="Workspace local">
+              DT
+            </span>
+          </div>
+        </header>
+        <main id="workspace-main" className="workspace-main" tabIndex={-1}>
+          {children}
+        </main>
+        <footer className="workspace-statusbar">
+          <span>
+            <span
+              className={`status-dot ${online ? "is-online" : "is-offline"}`}
+            />
+            {online ? "Sistema conectado" : "Servicios no disponibles"}
+          </span>
+          <span className="statusbar-module">
+            {active?.label ?? "Workspace"}
+          </span>
+          <button onClick={() => setPaletteOpen(true)}>
+            <Command size={12} /> Paleta de comandos <kbd>Ctrl K</kbd>
+          </button>
+        </footer>
+      </div>
+      <CommandDialog open={paletteOpen} onOpenChange={setPaletteOpen}>
+        <CommandInput placeholder="¿A dónde quieres ir?" />
+        <CommandList>
+          <CommandEmpty>No encontramos ese módulo.</CommandEmpty>
+          {NAV_GROUPS.map((group) => (
+            <CommandGroup key={group} heading={group}>
+              {WORKSPACE_MODULES.filter((item) => item.group === group).map(
+                ({ href, label, description, icon: Icon }) => (
+                  <CommandItem
+                    key={href}
+                    value={`${label} ${description}`}
+                    onSelect={() => {
+                      navigate(href);
+                      setPaletteOpen(false);
+                    }}
+                  >
+                    <Icon size={17} />
+                    <span>
+                      {label}
+                      <small className="command-description">
+                        {description}
+                      </small>
+                    </span>
+                    <ChevronRight className="ml-auto" size={14} />
+                  </CommandItem>
+                ),
+              )}
+            </CommandGroup>
+          ))}
+          <CommandGroup heading="Workspace">
+            <CommandItem
+              onSelect={() => {
+                navigate("/settings");
+                setPaletteOpen(false);
+              }}
+            >
+              <Settings2 size={17} />
+              Configuración y conexiones
+            </CommandItem>
+          </CommandGroup>
+        </CommandList>
+      </CommandDialog>
     </div>
   );
 }
