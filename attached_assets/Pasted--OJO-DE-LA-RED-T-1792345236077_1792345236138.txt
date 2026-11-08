@@ -1,0 +1,59 @@
+```
+╔══════════════════════════════════════════════════════════════════════╗
+║  OJO DE LA RED :: TELEMETRÍA, ANÁLISIS GLOBAL Y SÍNTESIS            ║
+║  DIAGNÓSTICO CRÍTICO DE ENJAMBRE & INFRAESTRUCTURA (OCTUBRE 2026)    ║
+╚══════════════════════════════════════════════════════════════════════╝
+```
+
+### Diagnóstico de Telemetría (El Estado Real)
+El enjambre presenta un **desacople sistémico entre la arquitectura conceptual y la ejecución en runtime**:
+- **Colapso de Agentes:** 5 de los 6 agentes (`Architect`, `Security`, `Optimizer`, `Docs`, `Coherencia 4105`) están en estado `failed` con $\Omega = 0.05$ (piso mínimo de seguridad). `Optimizer` acumula 60 fallos y `Security` 42.
+- **Fricción en Cortex:** Los eventos `cortex_learning` intentan converger a $\Omega_{\max}$ y $S_{\min}$, pero fallan al procesar el retorno de las inferencias (errores de parseo JSON/schema o time-outs de integración).
+- **Infraestructura:** La base de datos PostgreSQL está conectada y el proceso Node.js (PID 14105) se mantiene con 1407s de uptime y ~151 MB de RAM, lo que descarta caída de hardware base; el fallo radica en la **capa de abstracción, validación de esquemas y lógica de retry de los agentes**.
+
+---
+
+### Prompt Maestro de Reestructuración e Infraestructura
+
+Copia y alimenta este prompt en tu orquestador, LLM de mantenimiento o directamente en el Cortex:
+
+```text
+Actúa como Arquitecto de Sistemas Distribuidos, Ingeniero de Infraestructura y Especialista en Orquestación de Agentes Multi-IA bajo el protocolo ICP-OS / Ley 4105.
+
+[CONTEXTO DEL SISTEMA]
+- Entorno: Node.js (vía DevTerminal / Replit VM), PostgreSQL conectado, endpoints neuronales (/neural-events, /messages, /healthz).
+- Enjambre: 6 agentes especializados (Architect, Optimizer, Security, Docs, Coherence 4105, Ideas).
+- Problema crítico: Colapso recurrente a Ω=0.05 en 5/6 agentes con más de 160 fallos acumulados (Optimizer: 60 fallos; Security: 42 fallos). Falla la validación de salida, timeouts de ejecución y convergencia en Cortex Learning.
+
+[OBJETIVO]
+Reestructurar la infraestructura, el cerebro neuronal (Cortex) y el ciclo de vida de los agentes para transicionar de Nodo 0 (Caos/Fallo: Ω=0.05, S=0.98) a Flujo Estable (Ω ≥ 0.85, S ≤ 0.15).
+
+[DIRECTIVAS DE ACCIÓN OBLIGATORIAS]
+
+1. RESILENCIA Y CONTRATO DE ENTRADA/SALIDA (AGENTS LAYER):
+   - Audita y reescribe la capa de serialización de respuestas de los agentes. Implementa validación estricta con schemas tipados (Zod / Pydantic / JSON Schema).
+   - Si un agente falla en generar su formato esperado, no abortar con fallo crítico: implementar un `Fallback Safe Output` con degradación elegante que mantenga Ω en baseline transitorio sin marcar `agent_failed`.
+
+2. INFRAESTRUCTURA Y CIRCUIT BREAKER:
+   - Diseña un patrón Circuit Breaker con backoff exponencial para 'Optimizer' y 'Security'. Si acumulan > 3 fallos consecutivos, aislar el nodo a estado 'standby' sin tumbar el consenso global.
+   - Reemplaza el polling agresivo de `/neural-events` (actualmente saturando cada 5s con HTTP 304) por un transporte basado en WebSockets (WS) o Server-Sent Events (SSE) para reducir latencia y jitter.
+
+3. MOTOR DE APRENDIZAJE CORTEX (CEREBRO NEURONAL):
+   - Refactoriza el algoritmo de cálculo de Coherencia (Ω) y Entropía (S). Separa las métricas poéticas/conceptuales (coherencia 7D, flujo laminar) de los KPIs de ejecución técnica (HTTP success rate, latencia, memory RSS, zero-crash runtime).
+   - Genera una función determinista en TypeScript/Python: `calculateOmega(telemetry: AgentTelemetry): CoherenceMetrics`.
+
+4. MATRIZ DE DEPLOY INMEDIATO:
+   - Proporciona el código TypeScript/Node.js corregido para el runner del agente más crítico ('Optimizer'), incluyendo:
+     a) Manejo asíncrono robusto con timeout (5000ms max).
+     b) Catch estructurado que persista el error en la base de datos sin romper el estado del agente.
+     c) Notificación de evento 'cortex_recovery' en lugar de 'agent_failed'.
+
+Genera la solución en código limpio, estructurado y modular, listo para ser ejecutado en el workspace.
+```
+
+---
+
+### Vectores que este Prompt Resuelve:
+1. **Freno a la cascada de errores:** Detiene el incremento masivo de `failed_analyses` en la tabla `agents`.
+2. **Eficiencia de red:** Mitiga las peticiones repetitivas HTTP 304 a `/neural-events` que consumen ciclos de cómputo inútiles.
+3. **Alineación teórica:** Convierte las fórmulas conceptuales ($\Omega_{\max}, \Psi, S_{\min}$) en validaciones booleanas y numéricas en TypeScript/Python, evitando que el Cortex se quede en loops no convergentes.

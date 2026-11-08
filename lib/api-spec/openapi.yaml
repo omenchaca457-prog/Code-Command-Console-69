@@ -1,0 +1,1126 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: DevTerminal API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: execute
+    description: Code execution
+  - name: snippets
+    description: Code snippets management
+  - name: neural
+    description: Neural activity events
+  - name: ai
+    description: AI assistant
+  - name: simulation
+    description: Synthetic coherence simulation
+paths:
+  /snippets/{id}/execute:
+    post:
+      operationId: executeSnippet
+      tags: [snippets]
+      summary: Record a simulated snippet execution without running its code
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 2147483647
+      responses:
+        "200":
+          description: Simulated output and persisted execution timestamp
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnippetExecutionResult"
+        "400":
+          description: Invalid snippet id
+        "404":
+          description: Snippet not found
+        "500":
+          description: Could not persist the simulated execution
+  /trading-status:
+    get:
+      operationId: getTradingStatus
+      tags: [trading]
+      summary: Read the Python Máquina 4105 state file
+      responses:
+        "200":
+          description: Current state, or offline defaults if the file is absent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradingStatus"
+        "503":
+          description: State file is unreadable or invalid
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /readyz:
+    get:
+      operationId: readinessCheck
+      tags: [health]
+      summary: Readiness check including PostgreSQL connectivity
+      responses:
+        "200":
+          description: API and database are ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+        "503":
+          description: Database is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /execute:
+    post:
+      operationId: executeCode
+      tags: [execute]
+      summary: Execute code in a given language
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecuteRequest"
+      responses:
+        "200":
+          description: Execution result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecuteResult"
+
+  /languages:
+    get:
+      operationId: getLanguages
+      tags: [execute]
+      summary: Get supported languages
+      responses:
+        "200":
+          description: List of supported languages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LanguageList"
+
+  /snippets:
+    get:
+      operationId: listSnippets
+      tags: [snippets]
+      summary: List all saved snippets
+      responses:
+        "200":
+          description: List of snippets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Snippet"
+    post:
+      operationId: createSnippet
+      tags: [snippets]
+      summary: Save a new code snippet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSnippetBody"
+      responses:
+        "201":
+          description: Created snippet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snippet"
+
+  /neural-events:
+    get:
+      operationId: listNeuralEvents
+      tags: [neural]
+      summary: List recent neural activity events
+      responses:
+        "200":
+          description: Recent neural events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NeuralEvent"
+    post:
+      operationId: createNeuralEvent
+      tags: [neural]
+      summary: Record a neural activity event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NeuralEventInput"
+      responses:
+        "201":
+          description: Recorded neural event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NeuralEvent"
+
+  /coherence-simulation/status:
+    get:
+      operationId: getCoherenceSimulationStatus
+      tags: [simulation]
+      summary: Get synthetic coherence simulator status
+      responses:
+        "200":
+          description: Current simulator status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoherenceSimulationStatus"
+
+  /coherence-simulation/start:
+    post:
+      operationId: startCoherenceSimulation
+      tags: [simulation]
+      summary: Start synthetic coherence simulation
+      responses:
+        "200":
+          description: Simulator status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoherenceSimulationStatus"
+
+  /coherence-simulation/stop:
+    post:
+      operationId: stopCoherenceSimulation
+      tags: [simulation]
+      summary: Stop synthetic coherence simulation
+      responses:
+        "200":
+          description: Simulator status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoherenceSimulationStatus"
+
+  /coherence-simulation/logs:
+    get:
+      operationId: listCoherenceSimulationLogs
+      tags: [simulation]
+      summary: List saved synthetic simulation logs
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: beforeId
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Most recent persisted logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoherenceSimulationLogPage"
+        "400":
+          description: Invalid pagination parameters
+
+  /agents/simulated-analysis:
+    post:
+      operationId: runSimulatedAgentAnalysis
+      tags: [simulation]
+      summary: Run a synthetic agent task for a high-coherence motor sample
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulatedAgentAnalysisInput"
+      responses:
+        "200":
+          description: Agent completed the synthetic task and telemetry was updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulatedAgentAnalysisResult"
+        "400":
+          description: Invalid agent, vector, or coherence value
+
+  /coherence-simulation/logs/page:
+    get:
+      operationId: listCoherenceSimulationLogPages
+      tags: [simulation]
+      summary: List saved coherence simulation logs by page
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 9007199254740991
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: snapshotId
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: A page of saved simulation logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoherenceSimulationLogOffsetPage"
+        "400":
+          description: Invalid pagination parameters
+
+  /openai/image:
+    post:
+      operationId: generateOpenAiImage
+      tags: [ai]
+      summary: Generate an image with GPT-Image-2.5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImageGenerationInput"
+      responses:
+        "200":
+          description: Generated image URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageGenerationResult"
+        "400":
+          description: Invalid prompt
+        "502":
+          description: OpenAI image generation failed
+        "503":
+          description: OpenAI is not configured
+  /openai/image/{imageId}:
+    get:
+      operationId: getOpenAiImage
+      tags: [ai]
+      summary: Retrieve a generated image
+      parameters:
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Generated PNG image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Image not found
+
+  /snippets/recent:
+    get:
+      operationId: getRecentSnippets
+      tags: [snippets]
+      summary: Get the 5 most recently used snippets
+      responses:
+        "200":
+          description: Recent snippets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Snippet"
+
+  /ai/chat:
+    post:
+      operationId: aiChat
+      tags: [ai]
+      summary: Chat with AI assistant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiChatRequest"
+      responses:
+        "200":
+          description: AI response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiChatResponse"
+
+  /agents:
+    get:
+      operationId: getAgents
+      tags: [agents]
+      summary: Get persisted agent progress
+      responses:
+        "200":
+          description: Agent experience and latest coherence values
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentProgress"
+
+  /messages:
+    get:
+      operationId: getTerminalMessages
+      tags: [terminal]
+      summary: Obtener historial persistente de la terminal
+      parameters:
+        - name: conversation_id
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [terminal_main_session]
+      responses:
+        "200":
+          description: Mensajes ordenados desde el más antiguo
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TerminalMessage"
+    post:
+      operationId: saveTerminalMessage
+      tags: [terminal]
+      summary: Guardar un mensaje de la terminal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TerminalMessageInput"
+      responses:
+        "201":
+          description: Mensaje guardado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TerminalMessage"
+    delete:
+      operationId: clearTerminalMessages
+      tags: [terminal]
+      summary: Borrar el historial de la sesión fija de la terminal
+      parameters:
+        - name: conversation_id
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [terminal_main_session]
+      responses:
+        "200":
+          description: Historial eliminado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClearTerminalMessagesResponse"
+
+  /deepseek/chat:
+    post:
+      operationId: deepseekChat
+      tags: [ai]
+      summary: Consultar DeepSeek con respuesta en streaming SSE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeepSeekChatInput"
+      responses:
+        "200":
+          description: Flujo SSE con fragmentos de respuesta
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          description: Solicitud inválida
+        "503":
+          description: Falta configurar OPENAI_API_KEY
+        "502":
+          description: Error al consultar DeepSeek
+
+  /chat:
+    post:
+      operationId: deepseekChatAlias
+      tags: [ai]
+      summary: Alias SSE de chat SQ-AI con contexto PostgreSQL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeepSeekChatInput"
+      responses:
+        "200":
+          description: Flujo SSE con fragmentos de respuesta
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          description: Solicitud inválida
+        "503":
+          description: Falta configurar OPENAI_API_KEY
+        "502":
+          description: Error al consultar DeepSeek
+
+  /ai/explain:
+    post:
+      operationId: aiExplain
+      tags: [ai]
+      summary: Explain code using AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiExplainRequest"
+      responses:
+        "200":
+          description: AI explanation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiCodeResponse"
+
+  /ai/improve:
+    post:
+      operationId: aiImprove
+      tags: [ai]
+      summary: Improve or fix code using AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiImproveRequest"
+      responses:
+        "200":
+          description: AI improved code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiCodeResponse"
+
+  /snippets/{id}:
+    get:
+      operationId: getSnippet
+      tags: [snippets]
+      summary: Get a snippet by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Snippet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snippet"
+        "404":
+          description: Not found
+    put:
+      operationId: updateSnippet
+      tags: [snippets]
+      summary: Update a snippet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSnippetBody"
+      responses:
+        "200":
+          description: Updated snippet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Snippet"
+    delete:
+      operationId: deleteSnippet
+      tags: [snippets]
+      summary: Delete a snippet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+components:
+  schemas:
+    SnippetExecutionResult:
+      type: object
+      required: [id, success, simulated, output, lastRunAt]
+      properties:
+        id:
+          type: integer
+        success:
+          type: boolean
+          enum: [true]
+        simulated:
+          type: boolean
+          enum: [true]
+        output:
+          type: string
+          enum: ["Hello, DevTerminal!"]
+        lastRunAt:
+          type: string
+          format: date-time
+    TradingStatus:
+      type: object
+      required: [status, capital, pnl, trades, wins, losses, winrate, position, paused]
+      properties:
+        status:
+          type: string
+        capital:
+          type: number
+        pnl:
+          type: number
+        trades:
+          type: integer
+          minimum: 0
+        wins:
+          type: integer
+          minimum: 0
+        losses:
+          type: integer
+          minimum: 0
+        winrate:
+          type: number
+        position:
+          type: integer
+          enum: [-1, 0, 1]
+        paused:
+          type: boolean
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ExecuteRequest:
+      type: object
+      properties:
+        language:
+          type: string
+          enum: [javascript, python, bash, typescript]
+        code:
+          type: string
+        stdin:
+          type: string
+      required:
+        - language
+        - code
+
+    ExecuteResult:
+      type: object
+      properties:
+        stdout:
+          type: string
+        stderr:
+          type: string
+        exitCode:
+          type: integer
+        executionTime:
+          type: number
+      required:
+        - stdout
+        - stderr
+        - exitCode
+        - executionTime
+
+    Language:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        extension:
+          type: string
+        monacoLanguage:
+          type: string
+      required:
+        - id
+        - name
+        - extension
+        - monacoLanguage
+
+    LanguageList:
+      type: object
+      properties:
+        languages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Language"
+      required:
+        - languages
+
+    Snippet:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        code:
+          type: string
+        language:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        lastRunAt:
+          type: string
+          nullable: true
+      required:
+        - id
+        - title
+        - code
+        - language
+        - createdAt
+        - updatedAt
+
+    NeuralEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        origin:
+          type: string
+          enum: [terminal, runner, agents, creator, motor]
+        eventType:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, origin, eventType, content, createdAt]
+
+    NeuralEventInput:
+      type: object
+      properties:
+        origin:
+          type: string
+          enum: [terminal, runner, agents, creator, motor]
+        eventType:
+          type: string
+          minLength: 1
+          maxLength: 80
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      required: [origin, eventType, content]
+    CoherenceSimulationSample:
+      type: object
+      required: [vector, coherence, turbulence, vectorsProcessed, timestamp]
+      properties:
+        vector:
+          type: string
+        coherence:
+          type: number
+        turbulence:
+          type: string
+        vectorsProcessed:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+    CoherenceSimulationStatus:
+      type: object
+      required: [running, vectorsProcessed, latest]
+      properties:
+        running:
+          type: boolean
+        vectorsProcessed:
+          type: integer
+        latest:
+          oneOf:
+            - $ref: "#/components/schemas/CoherenceSimulationSample"
+            - type: "null"
+    CoherenceSimulationLog:
+      type: object
+      required: [id, vector, coherence, turbulence, vectorsProcessed, createdAt]
+      properties:
+        id:
+          type: integer
+        vector:
+          type: string
+        coherence:
+          type: number
+        turbulence:
+          type: string
+        vectorsProcessed:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    CoherenceSimulationLogPage:
+      type: object
+      required: [items, nextBeforeId]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoherenceSimulationLog"
+        nextBeforeId:
+          oneOf:
+            - type: integer
+            - type: "null"
+    SimulatedAgentAnalysisInput:
+      type: object
+      required: [agentId, vector, coherence]
+      properties:
+        agentId:
+          type: string
+          enum: [optimizer, security, architect, debug, docs, ideas, coherence]
+        vector:
+          type: string
+          pattern: "^\\d{1,20}$"
+        coherence:
+          type: number
+          exclusiveMinimum: 90
+          maximum: 100
+    SimulatedAgentAnalysisResult:
+      allOf:
+        - $ref: "#/components/schemas/SimulatedAgentAnalysisInput"
+        - type: object
+          required: [agentName, action, omega, xp, status]
+          properties:
+            agentName:
+              type: string
+            action:
+              type: string
+            omega:
+              type: number
+            xp:
+              type: integer
+            status:
+              type: string
+              enum: [completed]
+    CoherenceSimulationLogOffsetPage:
+      type: object
+      required: [items, page, pageSize, total, snapshotId]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoherenceSimulationLog"
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        snapshotId:
+          oneOf:
+            - type: integer
+            - type: "null"
+
+    ImageGenerationInput:
+      type: object
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 4000
+      required: [prompt]
+
+    ImageGenerationResult:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri-reference
+      required: [url]
+
+    CreateSnippetBody:
+      type: object
+      properties:
+        title:
+          type: string
+        code:
+          type: string
+        language:
+          type: string
+      required:
+        - title
+        - code
+        - language
+
+    UpdateSnippetBody:
+      type: object
+      properties:
+        title:
+          type: string
+        code:
+          type: string
+        language:
+          type: string
+
+    AiMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant, system]
+        content:
+          type: string
+      required:
+        - role
+        - content
+
+    AiChatRequest:
+      type: object
+      properties:
+        message:
+          type: string
+        context:
+          type: string
+          nullable: true
+        language:
+          type: string
+          nullable: true
+        agentId:
+          type: string
+          maxLength: 64
+          pattern: "^[a-z0-9_-]+$"
+        agentName:
+          type: string
+          maxLength: 80
+        agentRolePrompt:
+          type: string
+          maxLength: 1000
+        idempotencyKey:
+          type: string
+          format: uuid
+      required:
+        - message
+
+    AiChatResponse:
+      type: object
+      properties:
+        response:
+          type: string
+        conversationId:
+          type: integer
+        omega:
+          type: number
+          nullable: true
+        xp:
+          type: integer
+        analysisStatus:
+          type: string
+          enum: [rewarded, review, failed]
+        status:
+          type: string
+          enum: [active, completed, failed]
+        agentMetrics:
+          $ref: "#/components/schemas/AgentPayloadMetrics"
+      required:
+        - response
+        - conversationId
+
+    AgentPayloadMetrics:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active]
+        language:
+          type: string
+        code_chars:
+          type: integer
+        code_lines:
+          type: integer
+        non_empty_lines:
+          type: integer
+        evidence_available:
+          type: boolean
+      required: [status, language, code_chars, code_lines, non_empty_lines, evidence_available]
+
+    AgentProgress:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        xp:
+          type: integer
+        failedAnalyses:
+          type: integer
+        status:
+          type: string
+          enum: [idle, active, completed, failed]
+        omega:
+          type: number
+          nullable: true
+        lastFailure:
+          type: string
+          nullable: true
+      required: [id, name, xp, failedAnalyses, status]
+
+    DeepSeekChatInput:
+      type: object
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 8000
+        context:
+          type: ["string", "null"]
+          maxLength: 60000
+      required:
+        - prompt
+
+    AiExplainRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        language:
+          type: string
+        output:
+          type: string
+          nullable: true
+      required:
+        - code
+        - language
+
+    AiImproveRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        language:
+          type: string
+        instruction:
+          type: string
+          nullable: true
+      required:
+        - code
+        - language
+
+    AiCodeResponse:
+      type: object
+      properties:
+        result:
+          type: string
+      required:
+        - result
+
+    TerminalMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        conversationId:
+          type: integer
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, conversationId, role, content, createdAt]
+
+    TerminalMessageInput:
+      type: object
+      properties:
+        conversation_id:
+          type: string
+          enum: [terminal_main_session]
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 30000
+      required: [conversation_id, role, content]
+
+    ClearTerminalMessagesResponse:
+      type: object
+      properties:
+        conversationId:
+          type: string
+        deletedCount:
+          type: integer
+      required: [conversationId, deletedCount]

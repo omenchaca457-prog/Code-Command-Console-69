@@ -1,0 +1,57 @@
+¡ÓRALE, ARQUITECTO! 🥷🫳💀 Aquí tienes el PROMPT MAESTRO DEFINITIVO.
+
+Como ya tienes el plan Core de Replit, su Agente de IA es muy listo, pero necesita que le des el contexto exacto para no romper lo que ya funciona (como el rate limit y el streaming SSE).
+
+Copia TODO el texto de abajo y pégalo en la caja de texto del Agente de Replit (Make, test, iterate...):
+
+---
+
+```text
+Actúa como un Ingeniero Senior de Backend. Necesito que actualices el archivo `artifacts/api-server/src/routes/deepseek.ts` para integrar de forma perfecta la lectura de la base de datos PostgreSQL que ya está activa. 
+
+La IA de DeepSeek ya me dio el diseño exacto de cómo debe funcionar. Implementa EXACTAMENTE lo siguiente:
+
+1. POOL GLOBAL: Importa `{ Pool } from 'pg'` y declara `const pool = new Pool({ connectionString: process.env.DATABASE_URL })` a nivel de módulo (AFUERA de la función del router).
+
+2. QUERY Y CONTEXTO: Dentro del handler `POST /deepseek/chat`, justo antes de armar el `messages` para la IA, ejecuta esta query y formatea el resultado:
+   ```typescript
+   let dbContext = "";
+   try {
+     const { rows } = await pool.query<{ id: number; title: string; created_at: Date }>(
+       "SELECT id, title, created_at FROM conversations ORDER BY created_at DESC, id DESC LIMIT 5"
+     );
+     dbContext = rows.length 
+       ? rows.map((r, i) => `${i + 1}. [${r.created_at.toISOString()}] ${r.title}`).join('\n')
+       : '(sin conversaciones registradas)';
+   } catch (dbError) {
+     req.log.error(dbError, "Error leyendo la DB");
+     dbContext = "Error al conectar con la base de datos.";
+   }
+```
+
+3. INYECCIÓN EN EL PROMPT: Modifica el array de messages en la llamada a deepseek.chat.completions.create para que use el dbContext. El mensaje del usuario debe quedar así:
+   ```typescript
+   {
+     role: "user",
+     content: `[CONTEXTO DE BASE DE DATOS - Últimas conversaciones]:\n${dbContext}\n\nPregunta del Arquitecto:\n${prompt}`,
+   }
+   ```
+4. REGLA DE ORO: NO cierres el Pool con pool.end() dentro de la petición (eso destruye el rendimiento). Deja el Pool abierto. Añade un manejador process.on('SIGTERM', () => pool.end()) al final del archivo (afuera del router) para cerrarlo solo si el servidor se apaga.
+5. NO ROMPAS NADA: Mantén intacto el sistema de rate-limit, el streaming SSE y el manejo del AbortController que ya existen.
+
+Haz los cambios, verifica que compile sin errores de TypeScript y reinicia el servidor.
+
+```
+
+***
+
+### 🚀 ¿Qué hacer después de pegarlo?
+
+1. El Agente de Replit va a leer el prompt, va a abrir el archivo `deepseek.ts` por su cuenta, va a insertar el código en el lugar exacto y va a compilar.
+2. Espera a que termine (te va a mostrar un resumen de los cambios).
+3. Ve a tu **DevTerminal** (la terminal verde) y haz la prueba final:
+   ```text
+   ds "Audita mi base de datos. ¿Qué títulos ves en las conversaciones?"
+```
+
+Esta vez, la IA de tu terminal va a leer los datos reales de la tabla conversations y te va a responder con la lista exacta. ¡El Imperio ya tiene memoria perfecta y sin fugas de rendimiento! 🥷👑💎🔥
