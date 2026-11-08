@@ -428,13 +428,24 @@ const handleDeepseekChat = async (
     }
   } catch (error) {
     if (!controller.signal.aborted && !res.destroyed) {
-      req.log.error({ err: error }, "Falló el flujo de DeepSeek");
       const providerStatus =
         error && typeof error === "object" && "status" in error
           ? (error as { status?: unknown }).status
           : undefined;
+      const safeStatus =
+        typeof providerStatus === "number" && Number.isInteger(providerStatus)
+          ? providerStatus
+          : undefined;
+      // Provider errors can echo fragments of credentials. Log only a fixed
+      // provider label and numeric status; never serialize the error object.
+      req.log.error(
+        { provider: "deepseek", status: safeStatus },
+        "Falló el flujo de DeepSeek",
+      );
       const message =
-        providerStatus === 402
+        safeStatus === 401 || safeStatus === 403
+          ? "DeepSeek rechazó la credencial configurada. Reemplaza DEEPSEEK_API_KEY en Replit Secrets por una clave válida y reinicia el servidor."
+          : safeStatus === 402
           ? "La cuenta de DeepSeek no tiene saldo disponible. Añade saldo o configura otra clave."
           : "No se pudo completar la consulta a DeepSeek.";
       res.write(`data: ${JSON.stringify({ error: message })}\n\n`);

@@ -1501,6 +1501,11 @@ kbd {
   background: #c4f47708;
   border-color: #c4f47722;
 }
+.integration-badge.is-unverified {
+  color: #ffd166;
+  border-color: #ffd16644;
+  background: #ffd1660d;
+}
 .settings-note {
   display: flex;
   align-items: flex-start;

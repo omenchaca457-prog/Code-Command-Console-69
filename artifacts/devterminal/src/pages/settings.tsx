@@ -130,16 +130,13 @@ export default function Settings() {
                   </small>
                 </div>
                 <span
-                  className={`integration-badge ${data && item.configured ? "is-configured" : ""}`}
+                  className={`integration-badge ${data && item.configured ? "is-unverified" : ""}`}
+                  title={data && item.configured ? "La credencial está presente; la conexión con el proveedor no se ha validado." : undefined}
                 >
-                  {data && item.configured ? (
-                    <Check size={12} />
-                  ) : (
-                    <CircleAlert size={12} />
-                  )}
+                  <CircleAlert size={12} />
                   {data
                     ? item.configured
-                      ? "Configurado"
+                      ? "Configurado · no verificado"
                       : "Sin configurar"
                     : "No comprobado"}
                 </span>

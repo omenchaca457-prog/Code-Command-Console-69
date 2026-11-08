@@ -92,6 +92,49 @@ function parseTestBody(body: unknown) {
 }
 
 describe("SQ-AI simulated streaming route", () => {
+  it("does not copy provider authentication details into logs or SSE", async () => {
+    const logs: Array<Record<string, unknown>> = [];
+    const router = express.Router();
+    router.use((req, _res, next) => {
+      req.log.error = ((fields: Record<string, unknown>) => {
+        logs.push(fields);
+      }) as typeof req.log.error;
+      next();
+    });
+    router.use(createDeepseekRouter({
+      getApiKey: () => "test-key",
+      parseBody: async body => parseTestBody(body),
+      loadHistory: async () => "",
+      executeTool: async () => "{}",
+      createClient: () => ({
+        chat: {
+          completions: {
+            create: async () => {
+              const error = new Error("provider secret marker");
+              Object.assign(error, { status: 401 });
+              throw error;
+            },
+          },
+        },
+      }),
+    }));
+
+    await withServer(router, async baseUrl => {
+      const response = await fetch(`${baseUrl}/deepseek/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "Prueba de autenticación" }),
+      });
+      const body = await response.text();
+      assert.equal(response.status, 200);
+      assert.match(body, /DEEPSEEK_API_KEY/);
+      assert.doesNotMatch(body, /provider secret marker/);
+      assert.equal(logs.length, 1);
+      assert.deepEqual(logs[0], { provider: "deepseek", status: 401 });
+      assert.doesNotMatch(JSON.stringify(logs), /provider secret marker/);
+    });
+  });
+
   it("reports a slow HTTP 200 stream as degraded in both logs and SSE", async () => {
     const warnings: Array<Record<string, unknown>> = [];
     const router = express.Router();

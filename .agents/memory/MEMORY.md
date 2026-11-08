@@ -9,3 +9,4 @@
 - [JSX in frontend tests](jsx-test-runtime.md) — The tsx test runner and Vite can use different JSX runtimes; test-imported components need React in scope.
 - [Trading monitor scope](trading-monitor-scope.md) — La Máquina 4105 is the user's Python bot; DevTerminal monitors its state without executing trades.
 - [Native DevTerminal features](native-feature-work.md) — Keep new tools inside the existing app; do not create separate canvases or mockup artifacts for native features.
+- [Provider error redaction](deepseek-provider-errors.md) — Upstream authentication errors can echo credential fragments; log only allow-listed provider metadata.
