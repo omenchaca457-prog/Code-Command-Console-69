@@ -73,7 +73,11 @@ export async function inspectReplicationStatus(options: {
         state = "migration_pending";
       } else {
         enabled = row.enabled === true;
-        lastErrorCode = typeof row.last_error_code === "string" ? row.last_error_code : null;
+        lastErrorCode = typeof row.last_error_code === "string"
+          ? /^[A-Za-z0-9_-]{1,64}$/.test(row.last_error_code)
+            ? row.last_error_code
+            : "replica_error"
+          : null;
         lastSuccessAt = row.last_success_at
           ? new Date(row.last_success_at as string | Date).toISOString()
           : null;

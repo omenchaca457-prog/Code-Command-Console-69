@@ -5,13 +5,16 @@ import { loadMigrations } from "./migrations.ts";
 
 const target = process.argv[2] ?? "primary";
 const direction = process.argv[3] ?? "up";
+const developmentOnly = process.argv.includes("--development");
 if ((target !== "primary" && target !== "neon") || (direction !== "up" && direction !== "down")) {
   process.stderr.write("Usage: node src/migrate.ts <primary|neon> <up|down>\n");
   process.exitCode = 2;
 } else {
   let pool: InstanceType<typeof pg.Pool> | undefined;
   try {
-    if (target === "primary" && process.env.NODE_ENV === "production") {
+    if (target === "primary" && (
+      !developmentOnly || process.env.NODE_ENV === "production"
+    )) {
       throw new Error("Replit production schema changes are applied through the Publish flow.");
     }
     const databaseUrl = readDatabaseUrl(

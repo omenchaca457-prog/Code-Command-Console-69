@@ -70,7 +70,7 @@ export async function applyReplicationEvent(
            last_event_id = GREATEST(COALESCE(replica_state.last_event_id, 0), EXCLUDED.last_event_id),
            last_success_at = now(),
            updated_at = now()`,
-        [Number(event.id)],
+        [String(event.id)],
       );
       await client.query("COMMIT");
       return { duplicate: true };
@@ -102,7 +102,7 @@ export async function applyReplicationEvent(
          last_event_id = GREATEST(COALESCE(replica_state.last_event_id, 0), EXCLUDED.last_event_id),
          last_success_at = now(),
          updated_at = now()`,
-      [Number(event.id)],
+      [String(event.id)],
     );
     await client.query("COMMIT");
     return { duplicate: false };

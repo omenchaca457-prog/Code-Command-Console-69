@@ -49,8 +49,13 @@ describe("independent primary and Neon migrations", () => {
       "0002_neon_replica_metadata",
     ]);
     assert.match(primary[1]!.up, /ccc_capture_replication_event/);
+    assert.match(primary[1]!.up, /pending_count \+ required_events <= 100000/);
+    assert.match(primary[1]!.up, /needs_rebaseline = true/);
     assert.match(neon[1]!.up, /replica_applied_events/);
+    assert.match(neon[1]!.up, /replica_tombstones/);
     assert.doesNotMatch(neon[1]!.up, /replication_outbox/);
+    assert.match(primary[1]!.down, /Rollback refused/);
+    assert.match(neon[1]!.down, /Rollback refused/);
   });
 
   it("tracks and applies each target's migrations independently", async () => {

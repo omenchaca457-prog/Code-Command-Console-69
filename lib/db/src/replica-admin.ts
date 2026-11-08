@@ -43,12 +43,11 @@ async function readSchemaFingerprint(
         SELECT jsonb_agg(jsonb_build_object(
           'table', table_name,
           'column', column_name,
-          'ordinal', ordinal_position,
           'type', data_type,
           'udt', udt_name,
           'nullable', is_nullable,
           'default', column_default
-        ) ORDER BY table_name, ordinal_position)
+        ) ORDER BY table_name, column_name)
         FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name = ANY($1::text[])
@@ -265,8 +264,19 @@ export async function initializeReplicaIfSafe(
     const replicaDigest = await scanAllTables(replicaClient);
     const bootstrapAction = classifyReplicaBootstrap(primaryDigest, replicaDigest);
     let exactMatch = replicaDigestsMatch(primaryDigest, replicaDigest);
+    const replicaHistory = await replicaClient.query(
+      `SELECT
+         (SELECT count(*) FROM public.replica_applied_events)::int AS applied_events,
+         (SELECT count(*) FROM public.replica_tombstones)::int AS tombstones,
+         (SELECT count(*) FROM public.replica_bootstrap_state)::int AS bootstrap_rows`,
+    );
+    const hasReplicaHistory = Object.values(replicaHistory.rows[0] ?? {})
+      .some((count) => Number(count) > 0);
 
     if (bootstrapAction === "copy-empty-target") {
+      if (hasReplicaHistory) {
+        throw new Error("Neon has prior replication metadata; refusing to seed it.");
+      }
       await copyPrimaryRows(primaryClient, replicaClient);
       const verifiedReplica = await scanAllTables(replicaClient);
       exactMatch = replicaDigestsMatch(primaryDigest, verifiedReplica);
@@ -288,18 +298,20 @@ export async function initializeReplicaIfSafe(
       assertReplicaPayloadSafe(event.payload as Record<string, unknown>);
     }
 
-    for (const digest of primaryDigest) {
-      await replicaClient.query(
-        `INSERT INTO public.replica_bootstrap_state
-          (table_name, row_count, checksum, source_event_id, initialized_at)
-         VALUES ($1, $2, $3, $4, now())
-         ON CONFLICT (table_name) DO UPDATE SET
-           row_count = EXCLUDED.row_count,
-           checksum = EXCLUDED.checksum,
-           source_event_id = EXCLUDED.source_event_id,
-           initialized_at = EXCLUDED.initialized_at`,
-        [digest.table, digest.rows, digest.checksum, baselineEventId],
-      );
+    if (!hasReplicaHistory) {
+      for (const digest of primaryDigest) {
+        await replicaClient.query(
+          `INSERT INTO public.replica_bootstrap_state
+            (table_name, row_count, checksum, source_event_id, initialized_at)
+           VALUES ($1, $2, $3, $4, now())
+           ON CONFLICT (table_name) DO UPDATE SET
+             row_count = EXCLUDED.row_count,
+             checksum = EXCLUDED.checksum,
+             source_event_id = EXCLUDED.source_event_id,
+             initialized_at = EXCLUDED.initialized_at`,
+          [digest.table, digest.rows, digest.checksum, baselineEventId],
+        );
+      }
     }
     await replicaClient.query(
       `INSERT INTO public.replica_state

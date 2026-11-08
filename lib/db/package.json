@@ -10,9 +10,9 @@
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts",
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
-    "migrate": "node --experimental-strip-types ./src/migrate.ts primary up",
-    "migrate:primary": "node --experimental-strip-types ./src/migrate.ts primary up",
-    "migrate:primary:down": "node --experimental-strip-types ./src/migrate.ts primary down",
+    "migrate": "node --experimental-strip-types ./src/migrate.ts primary up --development",
+    "migrate:primary": "node --experimental-strip-types ./src/migrate.ts primary up --development",
+    "migrate:primary:down": "node --experimental-strip-types ./src/migrate.ts primary down --development",
     "migrate:neon": "node --experimental-strip-types ./src/migrate.ts neon up",
     "migrate:neon:down": "node --experimental-strip-types ./src/migrate.ts neon down",
     "replica:dry-run": "node --experimental-strip-types ./src/replica-admin.ts dry-run",

@@ -31,7 +31,9 @@ Migration histories are recorded independently in each database:
 - Neon: `0001_core_persistence`, then `0002_neon_replica_metadata`.
 
 Apply development-primary migrations with
-`pnpm --filter @workspace/db run migrate:primary`. Apply Neon migrations
+`pnpm --filter @workspace/db run migrate:primary`. The command requires an
+explicit development-only flag internally and refuses `NODE_ENV=production`.
+Apply Neon migrations
 separately with `pnpm --filter @workspace/db run migrate:neon`. The Neon command
 requires `NEON_DATABASE_URL`; it never falls back to the primary. Rollbacks are
 available as `migrate:primary:down` and `migrate:neon:down` and refuse to remove
