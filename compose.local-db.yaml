@@ -1,0 +1,6 @@
+# Optional PostgreSQL port for running the application directly on your computer:
+# docker compose -f compose.yaml -f compose.local-db.yaml up -d database
+services:
+  database:
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"

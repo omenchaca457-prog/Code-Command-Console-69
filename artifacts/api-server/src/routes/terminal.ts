@@ -37,7 +37,7 @@ function rejectUpgrade(req: IncomingMessage, socket: import("net").Socket) {
   );
 }
 
-export function attachTerminalWS(server: Server) {
+export function attachTerminalWS(server: Server, _options?: { authorize?: (request: IncomingMessage) => boolean }) {
   const wss = new WebSocketServer({ noServer: true });
   server.on("upgrade", rejectUpgrade);
   logger.info("Terminal PTY desactivada; las conexiones a /api/terminal/ws se rechazan");

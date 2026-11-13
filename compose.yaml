@@ -1,0 +1,60 @@
+services:
+  app:
+    image: ${DEVTERMINAL_IMAGE:-devterminal-independent:local}
+    build:
+      context: .
+      target: runtime
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 20s
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      DATA_DIR: /data
+      WORKSPACE_ROOT: /data/workspace
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      # A native .env URL normally points at localhost. Override it explicitly here.
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-}
+      PGHOST: database
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:-devterminal}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-devterminal_local}
+      PGDATABASE: ${POSTGRES_DB:-devterminal}
+    ports:
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-3000}:3000"
+    volumes:
+      - devterminal_files:/data
+      - devterminal_home:/home/node
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "scripts/healthcheck.mjs"]
+      interval: 15s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+
+  database:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-devterminal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devterminal_local}
+      POSTGRES_DB: ${POSTGRES_DB:-devterminal}
+    volumes:
+      - devterminal_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  devterminal_data:
+  devterminal_files:
+  devterminal_home:

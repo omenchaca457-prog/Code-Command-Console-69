@@ -5,7 +5,7 @@ import {
   writeProjectCode,
 } from "./deepseek-tool-safety.ts";
 import { serializeSqlRows } from "./deepseek-serialization.ts";
-import { getReplitIntegrationStatus } from "./deepseek-integrations.ts";
+import { getRuntimeIntegrationStatus } from "./deepseek-integrations.ts";
 import { getRuntimeDiagnostics } from "../lib/runtime-diagnostics.ts";
 import { publishNeuralEvent } from "./neural-event-bus.ts";
 const MAX_ROWS = 20;
@@ -211,7 +211,7 @@ export function createDeepseekToolExecutor(
       return JSON.stringify(serializeSqlRows(rows));
     }
     if (name === "get_integrations_status") {
-      return JSON.stringify(await getReplitIntegrationStatus());
+      return JSON.stringify(getRuntimeIntegrationStatus());
     }
     return JSON.stringify({ error: `Herramienta no permitida: ${name}` });
   } catch (error) {

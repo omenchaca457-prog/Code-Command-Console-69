@@ -1,7 +1,6 @@
 import { Router, type Request, type Response } from "express";
-import { randomUUID } from "node:crypto";
-import { Client as ObjectStorageClient } from "@replit/object-storage";
 import OpenAI from "openai";
+import { createImageStorage, isImageId } from "../lib/image-storage.ts";
 import { publishNeuralEvent } from "./neural-event-bus.ts";
 
 const AGENT_ID = "orquestador-openai";
@@ -13,7 +12,7 @@ const SYSTEM_PROMPT =
   "y emite una orden final concreta, breve y accionable para coordinar el enjambre. " +
   "No inventes estados ni resultados.";
 const getConfiguredOpenAiKey = () =>
-  process.env.chatgpt || process.env.OPENAI_API_KEY || process.env.openIA;
+  process.env.OPENAI_API_KEY || process.env.chatgpt || process.env.openIA;
 
 type AgentState = {
   id: string;
@@ -40,7 +39,7 @@ export function getOpenAiFailureMessage(error: unknown): string {
     ? error as { status?: unknown; code?: unknown }
     : {};
   if (details.status === 401 || details.code === "invalid_api_key") {
-    return "OpenAI rechazó la credencial. Revoca la llave expuesta y actualiza el Secret chatgpt.";
+    return "OpenAI rechazó la credencial. Actualiza OPENAI_API_KEY en el entorno del servidor.";
   }
   if (details.status === 403) {
     return "La cuenta de OpenAI no tiene permiso para usar GPT-4o.";
@@ -58,7 +57,7 @@ export function getOpenAiImageFailureMessage(error: unknown): string {
   const details = error && typeof error === "object"
     ? error as { status?: unknown; code?: unknown }
     : {};
-  if (details.status === 401 || details.code === "invalid_api_key") return "OpenAI rechazó la credencial. Revisa el Secret chatgpt.";
+  if (details.status === 401 || details.code === "invalid_api_key") return "OpenAI rechazó la credencial. Revisa OPENAI_API_KEY en el entorno del servidor.";
   if (details.status === 403) return "La cuenta de OpenAI no tiene permiso para generar imágenes.";
   if (details.code === "credit_balance_exhausted") return "La cuenta o proyecto de OpenAI agotó sus créditos. Revisa la facturación de OpenAI.";
   if (details.status === 429) return "OpenAI alcanzó su límite de solicitudes. Inténtalo de nuevo más tarde.";
@@ -77,18 +76,10 @@ type OpenAiRouteDependencies = {
   persistAndPublishDecision: (content: string) => Promise<DecisionEventStatus>;
   generateImage: (input: { prompt: string }) => Promise<string>;
   storeImage: (image: Buffer) => Promise<string>;
+  loadImage: (imageId: string) => Promise<Buffer | null>;
 };
 
-let objectStorage: ObjectStorageClient | undefined;
-
-function getObjectStorageClient() {
-  if (!objectStorage) {
-    const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
-    if (!bucketId) throw new Error("App Storage is not configured.");
-    objectStorage = new ObjectStorageClient({ bucketId });
-  }
-  return objectStorage;
-}
+const imageStorage = createImageStorage();
 
 const defaultDependencies: OpenAiRouteDependencies = {
   markAgentIdle: async () => {
@@ -156,12 +147,8 @@ const defaultDependencies: OpenAiRouteDependencies = {
     if (!imageData) throw new Error("OpenAI returned no image data");
     return imageData;
   },
-  storeImage: async (image) => {
-    const id = randomUUID();
-    const result = await getObjectStorageClient().uploadFromBytes(`creator/${id}.png`, image);
-    if (!result.ok) throw new Error("App Storage no pudo guardar la imagen.");
-    return id;
-  },
+  storeImage: imageStorage.storeImage,
+  loadImage: imageStorage.loadImage,
   persistAndPublishDecision: async (content) => {
     const { db, neuralEventsTable } = await import("@workspace/db");
     let created;
@@ -230,7 +217,7 @@ export function createOpenAiRouter(
     const agentResults = (rawAgentResults ?? []) as AgentResult[];
     if (!dependencies.getApiKey()) {
       res.status(503).json({
-        error: "OpenAI no está configurado. Añade OPENAI_API_KEY o chatgpt en Secrets.",
+        error: "OpenAI no está configurado. Añade OPENAI_API_KEY al entorno del servidor.",
       });
       return;
     }
@@ -315,7 +302,7 @@ export function createOpenAiRouter(
       return;
     }
     if (!dependencies.getApiKey()) {
-      res.status(503).json({ error: "OpenAI no está configurado. Añade el Secret chatgpt." });
+      res.status(503).json({ error: "OpenAI no está configurado. Añade OPENAI_API_KEY al entorno del servidor." });
       return;
     }
     try {
@@ -338,19 +325,18 @@ export function createOpenAiRouter(
     const imageId = Array.isArray(req.params.imageId)
       ? req.params.imageId[0]
       : req.params.imageId;
-    if (!/^[0-9a-f-]{36}$/i.test(imageId)) {
+    if (!isImageId(imageId)) {
       res.status(404).json({ error: "Imagen no encontrada." });
       return;
     }
     try {
-      const result = await getObjectStorageClient().downloadAsBytes(`creator/${imageId}.png`);
-      if (!result.ok) {
+      const imageBytes = await dependencies.loadImage(imageId);
+      if (imageBytes === null) {
         res.status(404).json({ error: "Imagen no encontrada." });
         return;
       }
-      const [imageBytes] = Array.isArray(result.value) ? result.value : [result.value];
-      if (!Buffer.isBuffer(imageBytes)) throw new Error("App Storage returned an invalid image.");
-      res.set({ "Content-Type": "image/png", "Cache-Control": "public, max-age=31536000, immutable" });
+      if (!Buffer.isBuffer(imageBytes)) throw new Error("Image storage returned an invalid image.");
+      res.set({ "Content-Type": "image/png", "Cache-Control": "private, max-age=31536000, immutable" });
       res.end(imageBytes);
     } catch {
       res.status(500).json({ error: "No se pudo cargar la imagen." });

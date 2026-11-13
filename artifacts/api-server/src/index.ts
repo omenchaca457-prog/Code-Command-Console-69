@@ -1,3 +1,4 @@
+import { workspaceAccess } from "./lib/workspace-access";
 import { createServer } from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
@@ -40,7 +41,7 @@ if (Number.isNaN(port) || port <= 0) {
 
 const server = createServer(app);
 
-const terminalWss = attachTerminalWS(server);
+const terminalWss = attachTerminalWS(server, { authorize: workspaceAccess.authorizeWebSocket });
 pool.on("error", (error: Error & { code?: string }) => {
   logger.warn(
     { code: error.code ?? "unknown" },
@@ -75,7 +76,7 @@ const replicaWorker = databaseConfigured && neonConfigured && neonPool
 startSimulation(persistSimulationSample);
 logger.info("Motor 5.5 iniciado: telemetría autónoma del servidor");
 
-server.listen(port, () => {
+server.listen(port, process.env.HOST || "127.0.0.1", () => {
   logger.info({ port }, "Server listening");
 });
 

@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import express from "express";
-import { describe, it } from "node:test";
+import { describe, it, type TestContext } from "node:test";
+import { createImageStorage } from "../lib/image-storage.ts";
 import { createOpenAiRouter as createBaseOpenAiRouter, getOpenAiFailureMessage } from "./openai.ts";
 
 function createOpenAiRouter(overrides: Parameters<typeof createBaseOpenAiRouter>[0] = {}) {
@@ -19,7 +23,7 @@ describe("POST /openai/chat", () => {
     );
     assert.equal(
       message,
-      "OpenAI rechazó la credencial. Revoca la llave expuesta y actualiza el Secret chatgpt.",
+      "OpenAI rechazó la credencial. Actualiza OPENAI_API_KEY en el entorno del servidor.",
     );
     assert.doesNotMatch(message, /secret-not-for-display/);
   });
@@ -249,5 +253,80 @@ describe("POST /openai/image", () => {
       server.close();
       await once(server, "close");
     }
+  });
+});
+
+async function startImageServer(
+  t: TestContext,
+  overrides: Parameters<typeof createBaseOpenAiRouter>[0],
+): Promise<string> {
+  const app = express();
+  app.use(express.json());
+  app.use("/api", createOpenAiRouter(overrides));
+  const server = createServer(app);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(async () => {
+    server.closeAllConnections();
+    server.close();
+    await once(server, "close");
+  });
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  return `http://127.0.0.1:${address.port}`;
+}
+
+describe("GET /openai/image/:imageId", () => {
+  it("serves locally generated PNG bytes at the existing image URL with private caching", async (t) => {
+    const dataDirectory = await mkdtemp(join(tmpdir(), "devterminal-image-route-"));
+    t.after(() => rm(dataDirectory, { recursive: true, force: true }));
+    const storage = createImageStorage(dataDirectory);
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const baseUrl = await startImageServer(t, {
+      getApiKey: () => "test-key",
+      generateImage: async () => png.toString("base64"),
+      storeImage: storage.storeImage,
+      loadImage: storage.loadImage,
+    });
+
+    const generated = await fetch(`${baseUrl}/api/openai/image`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "Neon observatory" }),
+    });
+    assert.equal(generated.status, 200);
+    const { url } = await generated.json() as { url: string };
+    assert.match(url, /^\/api\/openai\/image\/[0-9a-f-]{36}$/);
+    const response = await fetch(`${baseUrl}${url}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "image/png");
+    assert.equal(response.headers.get("cache-control"), "private, max-age=31536000, immutable");
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), png);
+  });
+
+  it("returns 404 for missing images and rejects invalid IDs before reading storage", async (t) => {
+    const reads: string[] = [];
+    const baseUrl = await startImageServer(t, {
+      loadImage: async (id) => { reads.push(id); return null; },
+    });
+    const id = "123e4567-e89b-12d3-a456-426614174000";
+
+    for (const imageId of ["-".repeat(36), "not-an-image", id]) {
+      const response = await fetch(`${baseUrl}/api/openai/image/${imageId}`);
+      assert.equal(response.status, 404);
+      assert.deepEqual(await response.json(), { error: "Imagen no encontrada." });
+    }
+    assert.deepEqual(reads, [id]);
+  });
+
+  it("returns a safe 500 response when image storage fails", async (t) => {
+    const baseUrl = await startImageServer(t, {
+      loadImage: async () => { throw new Error("EACCES /private/data/creator/image.png"); },
+    });
+    const response = await fetch(`${baseUrl}/api/openai/image/123e4567-e89b-12d3-a456-426614174000`);
+
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: "No se pudo cargar la imagen." });
+    assert.equal(response.headers.get("cache-control"), null);
   });
 });

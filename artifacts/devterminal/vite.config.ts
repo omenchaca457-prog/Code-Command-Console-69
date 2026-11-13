@@ -1,52 +1,55 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import path from "node:path";
+import { isIP } from "node:net";
 
-const isBuild = process.argv.includes("build");
-const rawPort = process.env.PORT ?? "21612";
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
-const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
+const port = Number(process.env.PORT ?? "21612");
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  throw new Error("PORT must be an integer between 1 and 65535.");
 }
 
 const basePath = process.env.BASE_PATH ?? "/";
-
-if (!basePath) {
-  throw new Error(
-    "BASE_PATH environment variable is required but was not provided.",
-  );
+if (!basePath.startsWith("/") || basePath.startsWith("//") || /[?#\\]/.test(basePath)) {
+  throw new Error("BASE_PATH must be an absolute application path.");
 }
+
+const hostnamePattern = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+const host = process.env.HOST?.trim() || "127.0.0.1";
+if (!isIP(host) && !hostnamePattern.test(host)) {
+  throw new Error("HOST must be an IP address or an exact hostname.");
+}
+
+const allowedHosts = (process.env.ALLOWED_HOSTS ?? "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
+if (allowedHosts.some((value) => !isIP(value) && !hostnamePattern.test(value))) {
+  throw new Error("ALLOWED_HOSTS must contain exact hostnames separated by commas.");
+}
+if (!isIP(host)) allowedHosts.push(host);
+if (process.env.PUBLIC_URL) {
+  const publicUrl = new URL(process.env.PUBLIC_URL);
+  if (!["http:", "https:"].includes(publicUrl.protocol) || publicUrl.username || publicUrl.password) {
+    throw new Error("PUBLIC_URL must be an HTTP or HTTPS URL without credentials.");
+  }
+  allowedHosts.push(publicUrl.hostname);
+}
+
+const apiTarget = new URL(process.env.API_PROXY_TARGET ?? "http://127.0.0.1:3000");
+if (!["http:", "https:"].includes(apiTarget.protocol) || apiTarget.username || apiTarget.password) {
+  throw new Error("API_PROXY_TARGET must be an HTTP or HTTPS URL without credentials.");
+}
+const apiProxy = {
+  target: apiTarget.toString(),
+  // Preserve the browser's Host and Origin for the API's access checks.
+  changeOrigin: false,
+  ws: true,
+};
 
 export default defineConfig({
   base: basePath,
-  plugins: [
-    react(),
-    tailwindcss(),
-    runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer({
-              root: path.resolve(import.meta.dirname, ".."),
-            }),
-          ),
-          await import("@replit/vite-plugin-dev-banner").then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
-  ],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
@@ -60,17 +63,18 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    proxy: { "/api": apiProxy },
     port,
     strictPort: true,
-    host: "0.0.0.0",
-    allowedHosts: true,
-    fs: {
-      strict: true,
-    },
+    host,
+    allowedHosts: [...new Set(allowedHosts)],
+    fs: { strict: true },
   },
   preview: {
+    proxy: { "/api": apiProxy },
     port,
-    host: "0.0.0.0",
-    allowedHosts: true,
+    strictPort: true,
+    host,
+    allowedHosts: [...new Set(allowedHosts)],
   },
 });

@@ -41,7 +41,7 @@ export default function Settings() {
             onClick={() => void refetch()}
           >
             <RefreshCw size={14} className={isFetching ? "animate-spin" : ""} />
-            Comprobar
+            Actualizar
           </button>
         </div>
         <section className="settings-card">
@@ -104,7 +104,7 @@ export default function Settings() {
                 { id: "deepseek", name: "DeepSeek", configured: false },
                 { id: "openai", name: "OpenAI", configured: false },
                 { id: "gemini", name: "Gemini", configured: false },
-                { id: "storage", name: "App Storage", configured: false },
+                { id: "storage", name: "Almacenamiento local", configured: false },
               ]
             ).map((item) => (
               <div className="integration-row" key={item.id}>
@@ -118,7 +118,7 @@ export default function Settings() {
                         : "S"}
                 </span>
                 <div>
-                  <strong>{item.name}</strong>
+                  <strong>{item.id === "storage" ? "Almacenamiento local" : item.name}</strong>
                   <small>
                     {item.id === "deepseek"
                       ? "Asistente de desarrollo y terminal inteligente"
@@ -126,17 +126,21 @@ export default function Settings() {
                         ? "Orquestación, análisis y generación de imágenes"
                         : item.id === "gemini"
                           ? "Análisis de contexto"
-                          : "Almacenamiento de imágenes en Replit"}
+                          : "Imágenes guardadas en el disco del servidor"}
                   </small>
                 </div>
                 <span
-                  className={`integration-badge ${data && item.configured ? "is-unverified" : ""}`}
-                  title={data && item.configured ? "La credencial está presente; la conexión con el proveedor no se ha validado." : undefined}
+                  className={`integration-badge ${data && item.configured ? item.id === "storage" ? "is-configured" : "is-unverified" : ""}`}
+                  title={data && item.configured ? item.id === "storage"
+                    ? "Almacenamiento local integrado; la escritura se comprueba al guardar una imagen."
+                    : "La credencial está presente; la conexión con el proveedor no se ha validado." : undefined}
                 >
-                  <CircleAlert size={12} />
+                  {item.id === "storage" && data && item.configured
+                    ? <Database size={12} />
+                    : <CircleAlert size={12} />}
                   {data
                     ? item.configured
-                      ? "Configurado · no verificado"
+                      ? item.id === "storage" ? "Local · integrado" : "Configurado · no verificado"
                       : "Sin configurar"
                     : "No comprobado"}
                 </span>
@@ -160,7 +164,7 @@ export default function Settings() {
           <div>
             <h2>Conecta DeepSeek</h2>
             <p>
-              Configura <code>DEEPSEEK_API_KEY</code> en Replit Secrets y
+              Configura <code>DEEPSEEK_API_KEY</code> en el archivo <code>.env</code> del servidor y
               reinicia la aplicación. El valor permanece en el servidor; la
               interfaz solo consulta si existe.
             </p>

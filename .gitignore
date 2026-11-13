@@ -54,3 +54,8 @@ __pycache__/
 .env
 .env.local
 .env.*.local
+
+# Standalone runtime state
+data/
+.env
+.env.local

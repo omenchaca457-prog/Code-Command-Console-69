@@ -1,33 +1,53 @@
-type RuntimeEnvironment = Record<string, string | undefined>;
+type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
-function isConfigured(environment: RuntimeEnvironment, keys: string[]): boolean {
-  return keys.some((key) => typeof environment[key] === "string" && environment[key]!.trim().length > 0);
+function isConfigured(...values: Array<string | undefined>): boolean {
+  return values.some((value) => Boolean(value?.trim()));
 }
 
-export function getReplitIntegrationStatus(environment: RuntimeEnvironment = process.env) {
+/**
+ * Reads current configuration without making provider calls or inspecting files.
+ * Configured providers have not been checked for valid credentials or availability.
+ * Local storage is built in; its filesystem permissions are checked when used.
+ */
+export function getRuntimeIntegrationStatus(
+  environment: RuntimeEnvironment = process.env,
+  observedAt: Date = new Date(),
+) {
+  const providers = [
+    {
+      id: "deepseek",
+      name: "DeepSeek",
+      configured: isConfigured(environment.DEEPSEEK_API_KEY),
+    },
+    {
+      id: "openai",
+      name: "OpenAI",
+      configured: isConfigured(environment.OPENAI_API_KEY, environment.chatgpt, environment.openIA),
+    },
+    {
+      id: "gemini",
+      name: "Gemini",
+      configured: isConfigured(environment.GEMINI_API_KEY),
+    },
+    {
+      id: "storage",
+      name: "Local storage",
+      configured: true,
+    },
+  ];
+
   return {
-    status: "runtime_presence_only",
-    verification: "La presencia de una variable no verifica que una conexión funcione.",
-    integrations: [
-      {
-        name: "OpenAI",
-        status: isConfigured(environment, ["OPENAI_API_KEY", "chatgpt", "openIA"])
-          ? "configured"
-          : "not_configured",
-        verification: "credential_presence_only",
-      },
-      {
-        name: "Gemini",
-        status: isConfigured(environment, ["GEMINI_API_KEY"])
-          ? "configured"
-          : "not_configured",
-        verification: "credential_presence_only",
-      },
-      {
-        name: "GitHub",
-        status: "not_verified",
-        verification: "No hay una comprobación de conexión en vivo configurada en esta app.",
-      },
-    ],
-  } as const;
+    status: "runtime_configuration",
+    source: "server",
+    capturedAt: observedAt.toISOString(),
+    freshness: "live_configuration",
+    verification: "configuration_only",
+    configuredCount: providers.filter((provider) => provider.configured).length,
+    integrations: providers.map((provider) => ({
+      ...provider,
+      status: provider.configured ? "configured" : "not_configured",
+      availability: "not_checked",
+    })),
+    truncated: false,
+  };
 }

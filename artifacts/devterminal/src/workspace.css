@@ -2,9 +2,9 @@
 :root,
 .dark {
   --app-font-sans:
-    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --app-font-mono:
-    "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+    "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Consolas, monospace;
   --background: 225 24% 5%;
   --foreground: 222 20% 90%;
   --card: 225 20% 9%;

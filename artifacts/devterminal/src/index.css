@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
@@ -109,9 +111,9 @@
   --chart-4: 280 100% 65%;
   --chart-5: 35 100% 55%;
 
-  --app-font-sans: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', Menlo, monospace;
+  --app-font-sans: 'JetBrains Mono Variable', 'Fira Code', 'Roboto Mono', Menlo, monospace;
   --app-font-serif: Georgia, serif;
-  --app-font-mono: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', Menlo, monospace;
+  --app-font-mono: 'JetBrains Mono Variable', 'Fira Code', 'Roboto Mono', Menlo, monospace;
 
   --radius: 0.125rem;
 
