@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -27,22 +27,8 @@ jobs:
         with:
           node-version: '24'
           cache: pnpm
-      - name: Refresh cross-platform lockfile once
-        if: matrix.os == 'ubuntu-latest'
-        run: pnpm install --lockfile-only --no-frozen-lockfile
-      - name: Commit refreshed lockfile to feature branch
-        if: matrix.os == 'ubuntu-latest'
-        shell: bash
-        run: |
-          if ! git diff --quiet -- pnpm-lock.yaml; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add pnpm-lock.yaml
-            git commit -m "chore: lock Windows x64 optional native dependencies"
-            git push origin HEAD:fix/omega4105-lite-windows-supervisor
-          fi
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm run typecheck
       - name: Test
