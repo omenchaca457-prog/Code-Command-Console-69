@@ -20,6 +20,9 @@ export default function AI() {
   const { events, recordEvent } = useNeuralContext();
   const { data: workspace } = useWorkspaceStatus();
   const deepseekConfigured = workspace?.integrations.some(item => item.id === "deepseek" && item.configured) ?? false;
+  const ollamaConfigured = workspace?.integrations.some(item => item.id === "ollama" && item.configured) ?? false;
+  const [provider, setProvider] = useState<"deepseek" | "ollama">("ollama");
+  const providerAvailable = provider === "ollama" ? ollamaConfigured : deepseekConfigured;
   const [messages, setMessages] = useState<Message[]>([
     { role: "assistant", content: "[STATUS] Núcleo SQ-AI listo. Contexto del editor y diagnósticos del sistema disponibles.\n[DATA] Ω pendiente de evidencia. ECR-Code: 410542503.\n[READY] Formula una consulta técnica, Arquitecto." }
   ]);
@@ -35,19 +38,30 @@ export default function AI() {
   }, [messages, isThinking]);
 
   const sendDeepseekPrompt = async (userMsg: string, context: string) => {
-    if (!userMsg.trim() || isDeepseekThinking || !deepseekConfigured) return;
+    if (!userMsg.trim() || isDeepseekThinking || !providerAvailable) return;
     setMessages(prev => [...prev, { role: "user", content: userMsg }, { role: "assistant", content: "" }]);
     setIsDeepseekThinking(true);
     recordEvent({ origin: "terminal", eventType: "ai_query", content: "Consulta enviada desde la interfaz SQ-AI" });
     try {
-      const response = await fetch("/api/deepseek/chat", {
+      const response = await fetch(provider === "ollama" ? "/api/ollama/chat" : "/api/deepseek/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: userMsg, context }),
+        body: JSON.stringify({ prompt: provider === "ollama" ? `${userMsg}\n\nContexto del editor (solo lectura):\n${context.slice(0, 4000)}` : userMsg, context }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null) as { error?: string } | null;
         throw new Error(body?.error || `Error del servidor (${response.status}).`);
+      }
+      if (provider === "ollama") {
+        const data = await response.json() as { response?: string };
+        if (!data.response?.trim()) throw new Error("OMEGA Lite devolvió una respuesta vacía.");
+        setMessages(previous => {
+          const next = [...previous];
+          const last = next.at(-1);
+          if (last?.role === "assistant") next[next.length - 1] = { ...last, content: data.response! };
+          return next;
+        });
+        return;
       }
       if (!response.body) throw new Error("El servidor no devolvió un flujo SSE.");
       await consumeDeepseekSse(response.body, new AbortController().signal, (text) => {
@@ -96,7 +110,7 @@ export default function AI() {
 
   const handleSend = () => {
     const userMsg = input.trim();
-    if (!userMsg || !deepseekConfigured) return;
+    if (!userMsg || !providerAvailable) return;
     setInput("");
     void sendDeepseekPrompt(userMsg, codeContext());
   };
@@ -170,11 +184,15 @@ export default function AI() {
             <h1 className="text-sm font-mono font-bold tracking-[0.25em] uppercase text-[#ff003c]" style={{ textShadow: "0 0 12px #ff003c60" }}>
               ASISTENTE DE DESARROLLO
             </h1>
-            <p className="text-[10px] font-mono text-[#333] tracking-widest uppercase">DEEPSEEK · CONTEXTO DE TU WORKSPACE</p>
+            <p className="text-[10px] font-mono text-[#333] tracking-widest uppercase">OMEGA LITE / DEEPSEEK · CONTEXTO DE TU WORKSPACE</p>
           </div>
         </div>
 
-        {!deepseekConfigured && <div className="ai-connection-notice" role="status"><span>{workspace ? "Configura DeepSeek para empezar a conversar." : "Comprobando la conexión con el servidor…"}</span><Link href="/settings">Ver conexiones →</Link></div>}
+        <div className="flex gap-2 mb-3" role="group" aria-label="Motor de inteligencia artificial">
+          <button type="button" aria-pressed={provider === "ollama"} onClick={() => setProvider("ollama")} className="button-secondary">OMEGA Lite (local)</button>
+          <button type="button" aria-pressed={provider === "deepseek"} onClick={() => setProvider("deepseek")} className="button-secondary">DeepSeek</button>
+        </div>
+        {!providerAvailable && <div className="ai-connection-notice" role="status"><span>{workspace ? (provider === "ollama" ? "Habilita OLLAMA_LOCAL_ENABLED=1 en el servidor local y mantén Ollama encendido." : "Configura DeepSeek para empezar a conversar.") : "Comprobando la conexión con el servidor…"}</span><Link href="/settings">Ver conexiones →</Link></div>}
 
         {/* Messages */}
         <ScrollArea className="flex-1 pr-2 mb-4">
@@ -233,16 +251,16 @@ export default function AI() {
           <div className="flex gap-2 px-3 py-2 border-b border-[#ff003c]/10">
             <button
               onClick={handleExplain}
-              disabled={isThinking || !deepseekConfigured}
-              title={deepseekConfigured ? "Analizar el código con DeepSeek" : "Configura DEEPSEEK_API_KEY en Replit Secrets"}
+              disabled={isThinking || !providerAvailable}
+              title={providerAvailable ? "Analizar el código" : "Configura el motor seleccionado"}
               className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono tracking-widest uppercase text-[#555] border border-[#222] hover:border-[#ff003c]/30 hover:text-[#ff003c]/70 hover:bg-[#ff003c]/5 transition-all disabled:opacity-30"
             >
               <Code className="h-2.5 w-2.5" /> Explicar
             </button>
             <button
               onClick={handleImprove}
-              disabled={isThinking || !deepseekConfigured}
-              title={deepseekConfigured ? "Proponer mejoras con DeepSeek" : "Configura DEEPSEEK_API_KEY en Replit Secrets"}
+              disabled={isThinking || !providerAvailable}
+              title={providerAvailable ? "Proponer mejoras" : "Configura el motor seleccionado"}
               className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono tracking-widest uppercase text-[#555] border border-[#222] hover:border-[#ff003c]/30 hover:text-[#ff003c]/70 hover:bg-[#ff003c]/5 transition-all disabled:opacity-30"
             >
               <Wrench className="h-2.5 w-2.5" /> Mejorar
@@ -259,9 +277,9 @@ export default function AI() {
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
-              placeholder={deepseekConfigured ? "Pregunta sobre tu código…" : "Configura DeepSeek en Conexiones para conversar"}
-              aria-label="Pregunta para el asistente DeepSeek"
-              disabled={!deepseekConfigured}
+              placeholder={providerAvailable ? "Pregunta sobre tu código…" : "Configura el motor seleccionado"}
+              aria-label="Pregunta para el asistente seleccionado"
+              disabled={!providerAvailable}
               className="flex-1 min-h-[56px] max-h-[140px] resize-none bg-transparent border-0 px-3 py-2.5 font-mono text-xs text-[#aaa] placeholder:text-[#2a2a2a] focus:outline-none focus:ring-0"
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -272,7 +290,7 @@ export default function AI() {
             />
             <button
               onClick={handleSend}
-              disabled={!input.trim() || isThinking || !deepseekConfigured}
+              disabled={!input.trim() || isThinking || !providerAvailable}
               aria-label="Enviar pregunta"
               className="px-4 self-stretch text-black bg-[#ff003c] hover:bg-[#ff1a52] transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
               style={{ boxShadow: input.trim() ? "0 0 12px #ff003c40" : "none" }}
