@@ -68,6 +68,17 @@ catalog:
 
 autoInstallPeers: false
 
+# Resolve native optional dependencies for both Linux CI and Windows x64 machines.
+supportedArchitectures:
+  os:
+    - current
+    - win32
+  cpu:
+    - current
+    - x64
+  libc:
+    - current
+
 onlyBuiltDependencies:
   - '@swc/core'
   - esbuild
