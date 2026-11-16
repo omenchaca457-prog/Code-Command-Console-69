@@ -1,4 +1,4 @@
-import { access, open, readFile, realpath, stat } from "node:fs/promises";
+import { access, lstat, open, readFile, realpath, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
 
@@ -169,12 +169,19 @@ export async function writeProjectCode(
     throw new Error("No se permite escribir este tipo de archivo.");
   }
 
-  // O_NOFOLLOW prevents a path swapped to a symlink between validation and open.
-  const file = await open(
-    resolvedTarget,
-    constants.O_WRONLY | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0),
-  );
+  // Windows rejects O_NOFOLLOW with EINVAL; verify the path is not a link there.
+  // On POSIX retain O_NOFOLLOW to protect against symlink swaps during open.
+  if (process.platform === "win32" && (await lstat(resolvedTarget)).isSymbolicLink()) {
+    throw new Error("No se permite escribir a través de enlaces simbólicos.");
+  }
+  const flags = constants.O_WRONLY | (process.platform === "win32" ? 0 : (constants.O_NOFOLLOW ?? 0));
+  const file = await open(resolvedTarget, flags);
   try {
+    const opened = await file.stat();
+    if (!opened.isFile() || opened.size > MAX_WRITE_BYTES || opened.dev !== metadata.dev || opened.ino !== metadata.ino) {
+      throw new Error("El archivo cambió durante la validación.");
+    }
+    await file.truncate(0);
     await file.writeFile(content, "utf8");
   } finally {
     await file.close();

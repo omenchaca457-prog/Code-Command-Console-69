@@ -17,6 +17,7 @@ import tradingStatusRouter from "./trading-status";
 import replicationStatusRouter from "./replication-status";
 import { disableTelemetryCache } from "./telemetry-cache";
 import workspaceRouter from "./workspace";
+import ollamaRouter from "./ollama";
 
 const router: IRouter = Router();
 
@@ -27,6 +28,7 @@ router.use([
 
 router.use(healthRouter);
 router.use(workspaceRouter);
+router.use(ollamaRouter);
 router.use(executeRouter);
 router.use(snippetsRouter);
 router.use(aiRouter);
