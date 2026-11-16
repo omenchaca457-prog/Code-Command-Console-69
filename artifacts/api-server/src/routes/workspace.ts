@@ -17,6 +17,11 @@ router.get("/workspace/status", async (_req, res) => {
     uptime: Math.floor(process.uptime()),
     integrations: [
       {
+        id: "ollama",
+        name: "OMEGA 4105 Lite (local)",
+        configured: process.env.OLLAMA_LOCAL_ENABLED === "1",
+      },
+      {
         id: "openai",
         name: "OpenAI",
         configured: Boolean(
