@@ -27,10 +27,8 @@ jobs:
         with:
           node-version: '24'
           cache: pnpm
-      - name: Install dependencies (temporary lockfile compatibility check)
-        run: pnpm install --no-frozen-lockfile
-      - name: Verify regenerated lockfile diff
-        run: git diff --stat -- pnpm-lock.yaml
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm run typecheck
       - name: Test
