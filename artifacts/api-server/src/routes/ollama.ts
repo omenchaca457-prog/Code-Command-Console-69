@@ -1,6 +1,10 @@
 import { Router } from "express";
 
 const router = Router();
+
+function isLocalHost(value: string): boolean {
+  return ["127.0.0.1", "localhost", "[::1]", "::1"].includes(value.toLowerCase());
+}
 const MODEL = process.env.OLLAMA_LOCAL_MODEL || "omega4105-lite";
 const COHERENCE_SYSTEM = [
   "Protocolo experimental Ley 4105: prioriza coherencia, precisión, creatividad controlada y sincronización de información.",
@@ -18,16 +22,21 @@ router.post("/ollama/chat", async (req, res) => {
   }
   // Socket loopback alone is insufficient when a reverse proxy forwards remote traffic.
   const remote = req.socket.remoteAddress || "";
-  const forwarded = req.headers.forwarded || req.headers["x-forwarded-for"] || req.headers["x-real-ip"];
+  const forwarded = req.headers.forwarded || req.headers["x-forwarded-for"] || req.headers["x-real-ip"] || req.headers["x-forwarded-host"] || req.headers["x-forwarded-proto"];
   if (forwarded) {
     res.status(403).json({ error: "OMEGA Lite no admite solicitudes reenviadas por proxies." });
+    return;
+  }
+  const host = req.headers.host;
+  if (typeof host !== "string" || !isLocalHost(host.startsWith("[") ? host.split("]")[0] + "]" : host.split(":")[0])) {
+    res.status(403).json({ error: "OMEGA Lite requiere un host local." });
     return;
   }
   const origin = req.headers.origin;
   if (typeof origin === "string") {
     try {
       const parsed = new URL(origin);
-      if (!["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname)) {
+      if (!isLocalHost(parsed.hostname)) {
         res.status(403).json({ error: "OMEGA Lite solo admite orígenes locales." });
         return;
       }
