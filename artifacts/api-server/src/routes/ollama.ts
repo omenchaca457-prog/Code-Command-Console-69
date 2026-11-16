@@ -1,0 +1,52 @@
+import { Router } from "express";
+
+const router = Router();
+const MODEL = process.env.OLLAMA_LOCAL_MODEL || "omega4105-lite";
+const LOCAL_URL = "http://127.0.0.1:11434/api/generate";
+
+// The local endpoint is intentionally fixed to loopback; no caller-controlled URL.
+router.post("/ollama/chat", async (req, res) => {
+  const prompt = req.body?.prompt;
+  if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 8000) {
+    res.status(400).json({ error: "La pregunta debe contener entre 1 y 8000 caracteres." });
+    return;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+  res.once("close", () => { if (!res.writableEnded) controller.abort(); });
+
+  try {
+    const upstream = await fetch(LOCAL_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: MODEL,
+        prompt,
+        stream: false,
+        options: { num_ctx: 2048, num_predict: 256 },
+      }),
+      signal: controller.signal,
+    });
+    if (!upstream.ok) {
+      req.log.warn({ provider: "ollama-local", status: upstream.status }, "Ollama local unavailable");
+      res.status(502).json({ error: "OMEGA Lite no está disponible. Comprueba que Ollama esté iniciado y el modelo instalado." });
+      return;
+    }
+    const data: unknown = await upstream.json();
+    const response = typeof data === "object" && data !== null && "response" in data
+      ? (data as { response?: unknown }).response : undefined;
+    if (typeof response !== "string") {
+      res.status(502).json({ error: "Ollama devolvió una respuesta inválida." });
+      return;
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ model: MODEL, response });
+  } catch {
+    res.status(503).json({ error: "No se pudo contactar con OMEGA Lite local." });
+  } finally {
+    clearTimeout(timeout);
+  }
+});
+
+export default router;
