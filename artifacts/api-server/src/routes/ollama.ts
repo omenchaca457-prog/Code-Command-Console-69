@@ -6,6 +6,10 @@ const LOCAL_URL = "http://127.0.0.1:11434/api/generate";
 
 // The local endpoint is intentionally fixed to loopback; no caller-controlled URL.
 router.post("/ollama/chat", async (req, res) => {
+  if (process.env.OLLAMA_LOCAL_ENABLED !== "1") {
+    res.status(503).json({ error: "OMEGA Lite local no está habilitado en este servidor." });
+    return;
+  }
   const prompt = req.body?.prompt;
   if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 8000) {
     res.status(400).json({ error: "La pregunta debe contener entre 1 y 8000 caracteres." });
@@ -36,7 +40,7 @@ router.post("/ollama/chat", async (req, res) => {
     const data: unknown = await upstream.json();
     const response = typeof data === "object" && data !== null && "response" in data
       ? (data as { response?: unknown }).response : undefined;
-    if (typeof response !== "string") {
+    if (typeof response !== "string" || !response.trim()) {
       res.status(502).json({ error: "Ollama devolvió una respuesta inválida." });
       return;
     }
