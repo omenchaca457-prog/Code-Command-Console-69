@@ -10,6 +10,11 @@ router.post("/ollama/chat", async (req, res) => {
     res.status(503).json({ error: "OMEGA Lite local no está habilitado en este servidor." });
     return;
   }
+  const remote = req.socket.remoteAddress || "";
+  if (!["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(remote)) {
+    res.status(403).json({ error: "OMEGA Lite solo acepta conexiones locales." });
+    return;
+  }
   const prompt = req.body?.prompt;
   if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 8000) {
     res.status(400).json({ error: "La pregunta debe contener entre 1 y 8000 caracteres." });
