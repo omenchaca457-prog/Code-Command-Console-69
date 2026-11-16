@@ -16,7 +16,26 @@ router.post("/ollama/chat", async (req, res) => {
     res.status(503).json({ error: "OMEGA Lite local no está habilitado en este servidor." });
     return;
   }
+  // Socket loopback alone is insufficient when a reverse proxy forwards remote traffic.
   const remote = req.socket.remoteAddress || "";
+  const forwarded = req.headers.forwarded || req.headers["x-forwarded-for"] || req.headers["x-real-ip"];
+  if (forwarded) {
+    res.status(403).json({ error: "OMEGA Lite no admite solicitudes reenviadas por proxies." });
+    return;
+  }
+  const origin = req.headers.origin;
+  if (typeof origin === "string") {
+    try {
+      const parsed = new URL(origin);
+      if (!["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname)) {
+        res.status(403).json({ error: "OMEGA Lite solo admite orígenes locales." });
+        return;
+      }
+    } catch {
+      res.status(403).json({ error: "Origen de solicitud inválido." });
+      return;
+    }
+  }
   if (!["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(remote)) {
     res.status(403).json({ error: "OMEGA Lite solo acepta conexiones locales." });
     return;
@@ -45,7 +64,7 @@ router.post("/ollama/chat", async (req, res) => {
       signal: controller.signal,
     });
     if (!upstream.ok) {
-      req.log.warn({ provider: "ollama-local", status: upstream.status }, "Ollama local unavailable");
+      req.log?.warn?.({ provider: "ollama-local", status: upstream.status }, "Ollama local unavailable");
       res.status(502).json({ error: "OMEGA Lite no está disponible. Comprueba que Ollama esté iniciado y el modelo instalado." });
       return;
     }
