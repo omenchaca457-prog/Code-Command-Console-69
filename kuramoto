@@ -1,0 +1,2 @@
+git checkout export/devterminal-current
+git am export-0001-kuramoto-4105.patch
