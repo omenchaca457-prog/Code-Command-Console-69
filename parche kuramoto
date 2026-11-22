@@ -1,0 +1,952 @@
+From 68a7a29018b8a31693ab8e6f14b0062bce47f868 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 21 Nov 2026 23:41:21 +0000
+Subject: [PATCH] =?UTF-8?q?Agrega=20m=C3=B3dulo=20Kuramoto=204105=20al=20D?=
+ =?UTF-8?q?evTerminal?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Nueva página /kuramoto con simulación de Kuramoto de campo medio (RK4):
+Ω, Ψ, S y C4105 se calculan de las fases, con círculo de fases, serie
+temporal y barrido de K con el Kc teórico. Núcleo numérico en
+src/lib/kuramoto.ts con pruebas (node:test). Se calcula en el navegador
+y se pausa cuando la página está inerte. Registrada en App.tsx, en la
+navegación del workspace y en el directorio de herramientas.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CNhMpn83kfmrrBy59xFc58
+---
+ artifacts/devterminal/src/App.tsx             |   2 +
+ .../devterminal/src/lib/kuramoto.test.ts      |  83 +++
+ artifacts/devterminal/src/lib/kuramoto.ts     | 183 ++++++
+ .../devterminal/src/lib/tool-directory.ts     |   9 +
+ .../src/lib/workspace-navigation.ts           |   8 +
+ artifacts/devterminal/src/pages/kuramoto.tsx  | 562 ++++++++++++++++++
+ 6 files changed, 847 insertions(+)
+ create mode 100644 artifacts/devterminal/src/lib/kuramoto.test.ts
+ create mode 100644 artifacts/devterminal/src/lib/kuramoto.ts
+ create mode 100644 artifacts/devterminal/src/pages/kuramoto.tsx
+
+diff --git a/artifacts/devterminal/src/App.tsx b/artifacts/devterminal/src/App.tsx
+index a2a30c0..3d705de 100644
+--- a/artifacts/devterminal/src/App.tsx
++++ b/artifacts/devterminal/src/App.tsx
+@@ -24,6 +24,7 @@ const Agents = lazy(() => import("@/pages/agents"));
+ const Cortex = lazy(() => import("@/pages/cortex"));
+ const Creator = lazy(() => import("@/pages/creator"));
+ const CoherenceSimulator = lazy(() => import("@/pages/coherence-simulator"));
++const Kuramoto = lazy(() => import("@/pages/kuramoto"));
+ const Trading = lazy(() => import("@/pages/trading"));
+ const ToolsDirectory = lazy(() => import("@/pages/tools-center"));
+ 
+@@ -42,6 +43,7 @@ const PERSISTENT_PAGES: Array<{ path: string; Component: ComponentType }> = [
+   { path: "/cortex", Component: Cortex },
+   { path: "/creator", Component: Creator },
+   { path: "/motor", Component: CoherenceSimulator },
++  { path: "/kuramoto", Component: Kuramoto },
+   { path: "/trading", Component: Trading },
+ ];
+ 
+diff --git a/artifacts/devterminal/src/lib/kuramoto.test.ts b/artifacts/devterminal/src/lib/kuramoto.test.ts
+new file mode 100644
+index 0000000..b00e9f2
+--- /dev/null
++++ b/artifacts/devterminal/src/lib/kuramoto.test.ts
+@@ -0,0 +1,83 @@
++import assert from "node:assert/strict";
++import { describe, it } from "node:test";
++import {
++  KuramotoSim,
++  c4105,
++  entropy,
++  gaussians,
++  initTheta,
++  kcTheory,
++  measure,
++  mulberry32,
++  sweepPoint,
++} from "./kuramoto.ts";
++
++describe("métricas de fase", () => {
++  it("fases idénticas dan Ω=1, Ψ=1 y S=0", () => {
++    const theta = new Float64Array(100).fill(1.234);
++    const m = measure(theta);
++    assert.ok(Math.abs(m.om - 1) < 1e-12);
++    assert.ok(Math.abs(m.ps - 1) < 1e-12);
++    assert.ok(m.s < 1e-12);
++  });
++
++  it("fases uniformes dan Ω pequeña y S cercana a 1", () => {
++    const m = measure(initTheta(4000, 1));
++    assert.ok(m.om < 0.05, `Ω=${m.om}`);
++    assert.ok(m.s > 0.99, `S=${m.s}`);
++  });
++
++  it("la entropía normalizada queda siempre en [0, 1]", () => {
++    for (const n of [1, 7, 50, 500]) {
++      const s = entropy(initTheta(n, n));
++      assert.ok(s >= 0 && s <= 1, `n=${n} S=${s}`);
++    }
++  });
++});
++
++describe("C4105", () => {
++  it("es el promedio de Ω, Ψ, K, P y 1−S", () => {
++    assert.ok(Math.abs(c4105(0.8, 0.9, 0.9, 0.1, 0.9) - 0.88) < 1e-12);
++    assert.ok(Math.abs(c4105(0.1, 0.2, 0.1, 0.8, 0.1) - 0.14) < 1e-12);
++  });
++
++  it("satura a [0, 1]", () => {
++    assert.equal(c4105(5, 5, 5, -5, 5), 1);
++    assert.equal(c4105(-5, -5, -5, 5, -5), 0);
++  });
++});
++
++describe("Kuramoto", () => {
++  it("Kc teórico para σ=1 es 2√(2π)/π ≈ 1.596", () => {
++    assert.ok(Math.abs(kcTheory(1) - 1.5958) < 1e-3);
++  });
++
++  it("es determinista con la misma semilla", () => {
++    const a = new KuramotoSim(50);
++    const b = new KuramotoSim(50);
++    for (let i = 0; i < 200; i++) {
++      a.step(2, 1);
++      b.step(2, 1);
++    }
++    assert.deepEqual(Array.from(a.theta), Array.from(b.theta));
++  });
++
++  it("las frecuencias gaussianas tienen media ≈ 0 y desviación ≈ 1", () => {
++    const z = gaussians(20000, mulberry32(3));
++    const mean = z.reduce((acc, v) => acc + v, 0) / z.length;
++    const variance = z.reduce((acc, v) => acc + (v - mean) ** 2, 0) / z.length;
++    assert.ok(Math.abs(mean) < 0.03, `media=${mean}`);
++    assert.ok(Math.abs(Math.sqrt(variance) - 1) < 0.03, `desv=${Math.sqrt(variance)}`);
++  });
++
++  it("transición de sincronización: Ω sube con K y cruza Kc", () => {
++    const z = new KuramotoSim(150).z;
++    const low = sweepPoint(z, 1, 0.5);
++    const high = sweepPoint(z, 1, 3);
++    const higher = sweepPoint(z, 1, 5);
++    assert.ok(low.om < 0.3, `Ω(K=0.5)=${low.om}`);
++    assert.ok(high.om > 0.8, `Ω(K=3)=${high.om}`);
++    assert.ok(higher.om >= high.om - 0.02, `Ω(K=5)=${higher.om}`);
++    assert.ok(high.s < low.s, "la entropía baja al sincronizar");
++  });
++});
+diff --git a/artifacts/devterminal/src/lib/kuramoto.ts b/artifacts/devterminal/src/lib/kuramoto.ts
+new file mode 100644
+index 0000000..6bd3bf5
+--- /dev/null
++++ b/artifacts/devterminal/src/lib/kuramoto.ts
+@@ -0,0 +1,183 @@
++// Núcleo numérico del modelo de Kuramoto de campo medio. Sin DOM ni React,
++// para poder probarlo con `node --test` y reutilizarlo en el servidor.
++//
++//   dθᵢ/dt = ωᵢ + K · r · sin(ψ − θᵢ)      con  r·e^{iψ} = (1/N) Σ e^{iθⱼ}
++//
++// Ω = r (coherencia), Ψ = alineación media con la fase colectiva,
++// S = entropía de Shannon del histograma de fases normalizada a [0, 1].
++
++export const SEED = 2893548719; // Secuencia S módulo 2^32, igual que en la simulación Python
++export const BINS = 20;
++export const DT = 0.02;
++const TWO_PI = 2 * Math.PI;
++
++export type Rng = () => number;
++
++export function mulberry32(seed: number): Rng {
++  let a = seed | 0;
++  return () => {
++    a = (a + 0x6d2b79f5) | 0;
++    let t = Math.imul(a ^ (a >>> 15), 1 | a);
++    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
++    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
++  };
++}
++
++export function gaussians(n: number, rand: Rng): Float64Array {
++  const z = new Float64Array(n);
++  for (let i = 0; i < n; i += 2) {
++    const u = Math.max(rand(), 1e-12);
++    const v = rand();
++    const m = Math.sqrt(-2 * Math.log(u));
++    z[i] = m * Math.cos(TWO_PI * v);
++    if (i + 1 < n) z[i + 1] = m * Math.sin(TWO_PI * v);
++  }
++  return z;
++}
++
++export function initTheta(n: number, seed: number): Float64Array {
++  const rand = mulberry32(seed);
++  const theta = new Float64Array(n);
++  for (let i = 0; i < n; i++) theta[i] = rand() * TWO_PI;
++  return theta;
++}
++
++export const clip01 = (x: number): number => Math.min(1, Math.max(0, x));
++
++export function order(theta: ArrayLike<number>): { r: number; psi: number } {
++  let c = 0;
++  let s = 0;
++  const n = theta.length;
++  for (let i = 0; i < n; i++) {
++    c += Math.cos(theta[i]);
++    s += Math.sin(theta[i]);
++  }
++  c /= n;
++  s /= n;
++  return { r: Math.hypot(c, s), psi: Math.atan2(s, c) };
++}
++
++export function entropy(theta: ArrayLike<number>): number {
++  const counts = new Array<number>(BINS).fill(0);
++  for (let i = 0; i < theta.length; i++) {
++    const wrapped = ((theta[i] % TWO_PI) + TWO_PI) % TWO_PI;
++    let bin = Math.floor((wrapped / TWO_PI) * BINS);
++    if (bin >= BINS) bin = BINS - 1;
++    counts[bin]++;
++  }
++  let h = 0;
++  for (const count of counts) {
++    if (count > 0) {
++      const p = count / theta.length;
++      h -= p * Math.log(p);
++    }
++  }
++  return h / Math.log(BINS);
++}
++
++export function alignment(theta: ArrayLike<number>, psi: number): number {
++  let a = 0;
++  for (let i = 0; i < theta.length; i++) a += (1 + Math.cos(theta[i] - psi)) / 2;
++  return a / theta.length;
++}
++
++export type Metrics = { om: number; ps: number; s: number; r: number; psi: number };
++
++export function measure(theta: ArrayLike<number>): Metrics {
++  const { r, psi } = order(theta);
++  return { om: clip01(r), ps: clip01(alignment(theta, psi)), s: clip01(entropy(theta)), r, psi };
++}
++
++/** Validador V4.2 (saturación): C = clip₀₁((Ω + Ψ + K + P + (1 − S)) / 5). */
++export function c4105(om: number, ps: number, k: number, s: number, p: number): number {
++  return clip01((om + ps + k + p + (1 - s)) / 5);
++}
++
++/** Acoplamiento crítico para frecuencias gaussianas de desviación sigma. */
++export function kcTheory(sigma: number): number {
++  return (2 * Math.sqrt(TWO_PI) * sigma) / Math.PI;
++}
++
++type Work = { k1: Float64Array; k2: Float64Array; k3: Float64Array; k4: Float64Array; tmp: Float64Array };
++
++function makeWork(n: number): Work {
++  return {
++    k1: new Float64Array(n),
++    k2: new Float64Array(n),
++    k3: new Float64Array(n),
++    k4: new Float64Array(n),
++    tmp: new Float64Array(n),
++  };
++}
++
++function deriv(th: Float64Array, z: Float64Array, sigma: number, K: number, out: Float64Array): void {
++  const { r, psi } = order(th);
++  for (let i = 0; i < th.length; i++) out[i] = z[i] * sigma + K * r * Math.sin(psi - th[i]);
++}
++
++function rk4(theta: Float64Array, z: Float64Array, sigma: number, K: number, dt: number, w: Work): void {
++  const n = theta.length;
++  deriv(theta, z, sigma, K, w.k1);
++  for (let i = 0; i < n; i++) w.tmp[i] = theta[i] + 0.5 * dt * w.k1[i];
++  deriv(w.tmp, z, sigma, K, w.k2);
++  for (let i = 0; i < n; i++) w.tmp[i] = theta[i] + 0.5 * dt * w.k2[i];
++  deriv(w.tmp, z, sigma, K, w.k3);
++  for (let i = 0; i < n; i++) w.tmp[i] = theta[i] + dt * w.k3[i];
++  deriv(w.tmp, z, sigma, K, w.k4);
++  for (let i = 0; i < n; i++) {
++    theta[i] += (dt * (w.k1[i] + 2 * w.k2[i] + 2 * w.k3[i] + w.k4[i])) / 6;
++  }
++}
++
++/** Simulación con estado: frecuencias naturales z·σ y fases que avanzan con RK4. */
++export class KuramotoSim {
++  readonly n: number;
++  readonly z: Float64Array;
++  readonly theta: Float64Array;
++  t = 0;
++  private readonly work: Work;
++
++  constructor(n: number, seed: number = SEED) {
++    this.n = n;
++    this.z = gaussians(n, mulberry32(seed));
++    this.theta = initTheta(n, seed + 7);
++    this.work = makeWork(n);
++  }
++
++  step(K: number, sigma: number, dt: number = DT): void {
++    rk4(this.theta, this.z, sigma, K, dt, this.work);
++    this.t += dt;
++  }
++}
++
++/**
++ * Valor estacionario aproximado para un K dado: corre T unidades de tiempo
++ * desde fases iniciales fijas y promedia el último cuarto.
++ */
++export function sweepPoint(
++  z: Float64Array,
++  sigma: number,
++  K: number,
++  T = 30,
++  dt = 0.05,
++): { om: number; ps: number; s: number } {
++  const theta = initTheta(z.length, SEED + 7);
++  const work = makeWork(z.length);
++  const steps = Math.round(T / dt);
++  const from = Math.floor(steps * 0.75);
++  let om = 0;
++  let ps = 0;
++  let s = 0;
++  let count = 0;
++  for (let i = 0; i < steps; i++) {
++    rk4(theta, z, sigma, K, dt, work);
++    if (i >= from && i % 5 === 0) {
++      const m = measure(theta);
++      om += m.om;
++      ps += m.ps;
++      s += m.s;
++      count++;
++    }
++  }
++  return { om: om / count, ps: ps / count, s: s / count };
++}
+diff --git a/artifacts/devterminal/src/lib/tool-directory.ts b/artifacts/devterminal/src/lib/tool-directory.ts
+index 1b33127..c22fdc4 100644
+--- a/artifacts/devterminal/src/lib/tool-directory.ts
++++ b/artifacts/devterminal/src/lib/tool-directory.ts
+@@ -5,6 +5,7 @@ import {
+   Bot,
+   Code2,
+   Cpu,
++  Gauge,
+   LibrarySquare,
+   Network,
+   Play,
+@@ -112,6 +113,14 @@ export const toolModules: ToolModule[] = [
+     color: "#00f0ff",
+     icon: Activity,
+   },
++  {
++    href: "/kuramoto",
++    label: "Kuramoto 4105",
++    category: "Sistema",
++    description: "Osciladores acoplados: Ω, Ψ, S y C4105 calculados de las fases.",
++    color: "#00f0ff",
++    icon: Gauge,
++  },
+   {
+     href: "/trading",
+     label: "Máquina 4105",
+diff --git a/artifacts/devterminal/src/lib/workspace-navigation.ts b/artifacts/devterminal/src/lib/workspace-navigation.ts
+index d0363c0..ac30e0e 100644
+--- a/artifacts/devterminal/src/lib/workspace-navigation.ts
++++ b/artifacts/devterminal/src/lib/workspace-navigation.ts
+@@ -4,6 +4,7 @@ import {
+   BrainCircuit,
+   Code2,
+   Cpu,
++  Gauge,
+   House,
+   Library,
+   Network,
+@@ -94,6 +95,13 @@ export const WORKSPACE_MODULES = [
+     icon: Activity,
+     group: "SISTEMA",
+   },
++  {
++    href: "/kuramoto",
++    label: "Kuramoto 4105",
++    description: "Osciladores acoplados y coherencia",
++    icon: Gauge,
++    group: "SISTEMA",
++  },
+   {
+     href: "/trading",
+     label: "Trading 4105",
+diff --git a/artifacts/devterminal/src/pages/kuramoto.tsx b/artifacts/devterminal/src/pages/kuramoto.tsx
+new file mode 100644
+index 0000000..0748c92
+--- /dev/null
++++ b/artifacts/devterminal/src/pages/kuramoto.tsx
+@@ -0,0 +1,562 @@
++import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
++import { Activity, Gauge, Play, Square } from "lucide-react";
++import { KuramotoSim, c4105, kcTheory, measure, sweepPoint, type Metrics } from "@/lib/kuramoto";
++
++type Controls = { K: number; n: number; sigma: number; kin: number; pin: number; speed: number };
++type Hist = { t: number[]; om: number[]; ps: number[]; s: number[] };
++type SweepData = { K: number[]; om: number[]; ps: number[]; s: number[] };
++type Live = Metrics & { locked: number };
++
++const DEFAULTS: Controls = { K: 3, n: 200, sigma: 1, kin: 0.7, pin: 0.6, speed: 4 };
++const HIST_MAX = 800;
++const KMAX = 5;
++const TWO_PI = Math.PI * 2;
++const FONT = "11px ui-monospace, Menlo, monospace";
++const COLORS = {
++  om: "#00f0ff",
++  ps: "#00ff9c",
++  en: "#ff9f43",
++  ink: "#eef3f8",
++  muted: "#75818d",
++  grid: "rgba(255,255,255,0.08)",
++  free: "#ff526e",
++};
++
++const emptyHist = (): Hist => ({ t: [], om: [], ps: [], s: [] });
++const emptySweep = (): SweepData => ({ K: [], om: [], ps: [], s: [] });
++
++type Pad = { l: number; r: number; t: number; b: number };
++
++function prepare(cv: HTMLCanvasElement | null) {
++  if (!cv) return null;
++  const dpr = Math.min(window.devicePixelRatio || 1, 2);
++  const w = cv.clientWidth;
++  const h = cv.clientHeight;
++  if (w === 0 || h === 0) return null;
++  const pw = Math.round(w * dpr);
++  const ph = Math.round(h * dpr);
++  if (cv.width !== pw || cv.height !== ph) {
++    cv.width = pw;
++    cv.height = ph;
++  }
++  const ctx = cv.getContext("2d");
++  if (!ctx) return null;
++  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
++  ctx.clearRect(0, 0, w, h);
++  return { ctx, w, h };
++}
++
++function drawAxes(
++  ctx: CanvasRenderingContext2D,
++  w: number,
++  h: number,
++  P: Pad,
++  xmin: number,
++  xmax: number,
++  xticks: number,
++  fmt: (v: number) => string,
++) {
++  ctx.font = FONT;
++  ctx.fillStyle = COLORS.muted;
++  ctx.strokeStyle = COLORS.grid;
++  ctx.lineWidth = 1;
++  ctx.textAlign = "right";
++  ctx.textBaseline = "middle";
++  for (let i = 0; i <= 4; i++) {
++    const v = i / 4;
++    const y = P.t + (1 - v) * (h - P.t - P.b);
++    ctx.beginPath();
++    ctx.moveTo(P.l, y + 0.5);
++    ctx.lineTo(w - P.r, y + 0.5);
++    ctx.stroke();
++    ctx.fillText(v === 0 ? "0" : v === 1 ? "1" : v.toFixed(2), P.l - 6, y);
++  }
++  ctx.textAlign = "center";
++  ctx.textBaseline = "top";
++  for (let i = 0; i < xticks; i++) {
++    const f = i / (xticks - 1);
++    ctx.fillText(fmt(xmin + f * (xmax - xmin)), P.l + f * (w - P.l - P.r), h - P.b + 6);
++  }
++}
++
++function plotLine(
++  ctx: CanvasRenderingContext2D,
++  xs: number[],
++  ys: number[],
++  X: (v: number) => number,
++  Y: (v: number) => number,
++  color: string,
++  lineWidth: number,
++  dash: number[] = [],
++) {
++  if (xs.length < 2) return;
++  ctx.beginPath();
++  ctx.strokeStyle = color;
++  ctx.lineWidth = lineWidth;
++  ctx.lineJoin = "round";
++  ctx.setLineDash(dash);
++  for (let i = 0; i < xs.length; i++) {
++    if (i === 0) ctx.moveTo(X(xs[i]), Y(ys[i]));
++    else ctx.lineTo(X(xs[i]), Y(ys[i]));
++  }
++  ctx.stroke();
++  ctx.setLineDash([]);
++}
++
++/** Dibuja los osciladores sobre el círculo y devuelve el porcentaje bloqueado a la fase colectiva. */
++function drawPhase(cv: HTMLCanvasElement | null, sim: KuramotoSim, c: Controls, m: Metrics): number | null {
++  const surface = prepare(cv);
++  if (!surface) return null;
++  const { ctx, w, h } = surface;
++  const cx = w / 2;
++  const cy = h / 2;
++  const R = Math.min(w, h) / 2 - 14;
++  ctx.strokeStyle = COLORS.grid;
++  ctx.lineWidth = 1.5;
++  ctx.beginPath();
++  ctx.arc(cx, cy, R, 0, TWO_PI);
++  ctx.stroke();
++  ctx.lineWidth = 1;
++  ctx.beginPath();
++  ctx.moveTo(cx - R, cy);
++  ctx.lineTo(cx + R, cy);
++  ctx.moveTo(cx, cy - R);
++  ctx.lineTo(cx, cy + R);
++  ctx.stroke();
++
++  // Un oscilador queda bloqueado cuando |ωᵢ| ≤ K·r.
++  const limit = c.K * m.r;
++  let locked = 0;
++  ctx.globalAlpha = 0.75;
++  for (let i = 0; i < sim.n; i++) {
++    const isLocked = Math.abs(sim.z[i] * c.sigma) <= limit;
++    if (isLocked) locked++;
++    ctx.fillStyle = isLocked ? COLORS.om : COLORS.free;
++    ctx.beginPath();
++    ctx.arc(cx + R * Math.cos(sim.theta[i]), cy - R * Math.sin(sim.theta[i]), 3, 0, TWO_PI);
++    ctx.fill();
++  }
++  ctx.globalAlpha = 1;
++
++  const ex = cx + R * m.r * Math.cos(m.psi);
++  const ey = cy - R * m.r * Math.sin(m.psi);
++  ctx.strokeStyle = COLORS.ink;
++  ctx.fillStyle = COLORS.ink;
++  ctx.lineWidth = 3;
++  ctx.lineCap = "round";
++  ctx.beginPath();
++  ctx.moveTo(cx, cy);
++  ctx.lineTo(ex, ey);
++  ctx.stroke();
++  ctx.beginPath();
++  ctx.arc(ex, ey, 4.5, 0, TWO_PI);
++  ctx.fill();
++  return Math.round((100 * locked) / sim.n);
++}
++
++function drawSeries(cv: HTMLCanvasElement | null, hist: Hist, c: Controls) {
++  const surface = prepare(cv);
++  if (!surface) return;
++  const { ctx, w, h } = surface;
++  const P: Pad = { l: 36, r: 10, t: 10, b: 26 };
++  const n = hist.t.length;
++  const t0 = n ? hist.t[0] : 0;
++  const span = Math.max(n ? hist.t[n - 1] - t0 : 0, 10);
++  const X = (t: number) => P.l + ((t - t0) / span) * (w - P.l - P.r);
++  const Y = (v: number) => P.t + (1 - v) * (h - P.t - P.b);
++  drawAxes(ctx, w, h, P, t0, t0 + span, 5, (v) => v.toFixed(0));
++  const cs = hist.t.map((_, i) => c4105(hist.om[i], hist.ps[i], c.kin, hist.s[i], c.pin));
++  plotLine(ctx, hist.t, hist.om, X, Y, COLORS.om, 1.8);
++  plotLine(ctx, hist.t, hist.ps, X, Y, COLORS.ps, 1.8);
++  plotLine(ctx, hist.t, hist.s, X, Y, COLORS.en, 1.8);
++  plotLine(ctx, hist.t, cs, X, Y, COLORS.ink, 2.6, [6, 4]);
++  ctx.fillStyle = COLORS.muted;
++  ctx.font = FONT;
++  ctx.textAlign = "right";
++  ctx.textBaseline = "bottom";
++  ctx.fillText("tiempo", w - P.r, h - 2);
++}
++
++function drawSweep(cv: HTMLCanvasElement | null, sweep: SweepData, c: Controls) {
++  const surface = prepare(cv);
++  if (!surface) return;
++  const { ctx, w, h } = surface;
++  const P: Pad = { l: 36, r: 12, t: 16, b: 26 };
++  const X = (k: number) => P.l + (k / KMAX) * (w - P.l - P.r);
++  const Y = (v: number) => P.t + (1 - v) * (h - P.t - P.b);
++  drawAxes(ctx, w, h, P, 0, KMAX, 6, (v) => v.toFixed(0));
++
++  const kc = kcTheory(c.sigma);
++  ctx.strokeStyle = COLORS.muted;
++  ctx.lineWidth = 1.2;
++  ctx.setLineDash([4, 4]);
++  ctx.beginPath();
++  ctx.moveTo(X(kc) + 0.5, P.t);
++  ctx.lineTo(X(kc) + 0.5, h - P.b);
++  ctx.stroke();
++  ctx.strokeStyle = COLORS.ink;
++  ctx.setLineDash([2, 3]);
++  const kx = X(Math.min(c.K, KMAX));
++  ctx.beginPath();
++  ctx.moveTo(kx + 0.5, P.t);
++  ctx.lineTo(kx + 0.5, h - P.b);
++  ctx.stroke();
++  ctx.setLineDash([]);
++
++  const labelLeft = kc > KMAX * 0.6;
++  ctx.fillStyle = COLORS.muted;
++  ctx.font = FONT;
++  ctx.textAlign = labelLeft ? "right" : "left";
++  ctx.textBaseline = "top";
++  ctx.fillText(`Kc ≈ ${kc.toFixed(2)}`, X(kc) + (labelLeft ? -5 : 5), P.t + 2);
++
++  const cs = sweep.K.map((_, i) => c4105(sweep.om[i], sweep.ps[i], c.kin, sweep.s[i], c.pin));
++  plotLine(ctx, sweep.K, sweep.om, X, Y, COLORS.om, 2);
++  plotLine(ctx, sweep.K, cs, X, Y, COLORS.ink, 2.2, [6, 4]);
++  for (let i = 0; i < sweep.K.length; i++) {
++    ctx.fillStyle = COLORS.om;
++    ctx.beginPath();
++    ctx.arc(X(sweep.K[i]), Y(sweep.om[i]), 3, 0, TWO_PI);
++    ctx.fill();
++    ctx.fillStyle = COLORS.ink;
++    ctx.beginPath();
++    ctx.arc(X(sweep.K[i]), Y(cs[i]), 2.5, 0, TWO_PI);
++    ctx.fill();
++  }
++  ctx.fillStyle = COLORS.muted;
++  ctx.textAlign = "right";
++  ctx.textBaseline = "bottom";
++  ctx.fillText("acoplamiento K", w - P.r, h - 2);
++}
++
++function stateOf(om: number) {
++  if (om < 0.3) return { label: "Sin sincronía", color: "#ff526e" };
++  if (om < 0.7) return { label: "En transición", color: "#ffb84d" };
++  return { label: "Sincronizado", color: "#00ff9c" };
++}
++
++function Slider(props: {
++  id: string;
++  label: string;
++  value: number;
++  min: number;
++  max: number;
++  step: number;
++  format: (v: number) => string;
++  note?: string;
++  onChange: (v: number) => void;
++}) {
++  return (
++    <div className="mb-4">
++      <div className="flex items-baseline justify-between gap-3">
++        <label htmlFor={props.id} className="text-sm font-medium">{props.label}</label>
++        <output htmlFor={props.id} className="font-mono text-xs tabular-nums text-[#00f0ff]">{props.format(props.value)}</output>
++      </div>
++      <input
++        id={props.id}
++        type="range"
++        min={props.min}
++        max={props.max}
++        step={props.step}
++        value={props.value}
++        onChange={(event) => props.onChange(Number(event.target.value))}
++        className="mt-1 w-full accent-[#00f0ff]"
++      />
++      {props.note && <p className="mt-1 text-xs text-[#75818d]">{props.note}</p>}
++    </div>
++  );
++}
++
++function Tile(props: { label: string; value: string; hint?: string; accent?: boolean; children?: ReactNode }) {
++  return (
++    <div className={`min-w-0 border bg-[#0c1118] p-4 ${props.accent ? "border-[#00f0ff]/40" : "border-white/10"}`}>
++      <div className="font-mono text-[10px] uppercase tracking-[.16em] text-[#84909b]">{props.label}</div>
++      <div className="mt-1 font-mono text-2xl font-bold tabular-nums sm:text-3xl">{props.value}</div>
++      {props.hint && <div className="mt-1 text-xs text-[#75818d]">{props.hint}</div>}
++      {props.children}
++    </div>
++  );
++}
++
++export default function Kuramoto() {
++  const [controls, setControls] = useState<Controls>(DEFAULTS);
++  const [live, setLive] = useState<Live>({ om: 0, ps: 0, s: 1, r: 0, psi: 0, locked: 0 });
++  const [running, setRunning] = useState(
++    () => !(typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches),
++  );
++  const [sweepDone, setSweepDone] = useState(false);
++
++  const rootRef = useRef<HTMLElement | null>(null);
++  const cvPhase = useRef<HTMLCanvasElement | null>(null);
++  const cvSeries = useRef<HTMLCanvasElement | null>(null);
++  const cvSweep = useRef<HTMLCanvasElement | null>(null);
++
++  const controlsRef = useRef<Controls>(DEFAULTS);
++  const runningRef = useRef(running);
++  const simRef = useRef<KuramotoSim | null>(null);
++  const histRef = useRef<Hist>(emptyHist());
++  const sweepRef = useRef<SweepData>(emptySweep());
++  const stepsRef = useRef(0);
++  const dirtyRef = useRef(true);
++  const sweepToken = useRef(0);
++  const sweepTimer = useRef<number | undefined>(undefined);
++  const sweepDebounce = useRef<number | undefined>(undefined);
++
++  const advance = useCallback((count: number) => {
++    const sim = simRef.current;
++    if (!sim) return;
++    const { K, sigma } = controlsRef.current;
++    for (let i = 0; i < count; i++) {
++      sim.step(K, sigma);
++      stepsRef.current += 1;
++      if (stepsRef.current % 5 === 0) {
++        const m = measure(sim.theta);
++        const h = histRef.current;
++        h.t.push(sim.t);
++        h.om.push(m.om);
++        h.ps.push(m.ps);
++        h.s.push(m.s);
++        if (h.t.length > HIST_MAX) {
++          h.t.shift();
++          h.om.shift();
++          h.ps.shift();
++          h.s.shift();
++        }
++      }
++    }
++  }, []);
++
++  const restart = useCallback((n: number) => {
++    simRef.current = new KuramotoSim(n);
++    histRef.current = emptyHist();
++    stepsRef.current = 0;
++    advance(1000); // arranque en caliente para que las gráficas no empiecen vacías
++    dirtyRef.current = true;
++  }, [advance]);
++
++  const drawAll = useCallback((): Live | null => {
++    const sim = simRef.current;
++    if (!sim) return null;
++    const c = controlsRef.current;
++    const m = measure(sim.theta);
++    const locked = drawPhase(cvPhase.current, sim, c, m);
++    drawSeries(cvSeries.current, histRef.current, c);
++    drawSweep(cvSweep.current, sweepRef.current, c);
++    return { ...m, locked: locked ?? 0 };
++  }, []);
++
++  const runSweep = useCallback(() => {
++    const token = ++sweepToken.current;
++    window.clearTimeout(sweepTimer.current);
++    const sim = simRef.current;
++    if (!sim) return;
++    const { z } = sim;
++    const { sigma } = controlsRef.current;
++    const Ks: number[] = [];
++    for (let k = 0; k <= KMAX + 1e-6; k += 0.25) Ks.push(Math.round(k * 100) / 100);
++    sweepRef.current = emptySweep();
++    setSweepDone(false);
++    let idx = 0;
++    const step = () => {
++      if (token !== sweepToken.current) return;
++      if (idx >= Ks.length) {
++        setSweepDone(true);
++        return;
++      }
++      const K = Ks[idx++];
++      const pt = sweepPoint(z, sigma, K);
++      const sw = sweepRef.current;
++      sw.K.push(K);
++      sw.om.push(pt.om);
++      sw.ps.push(pt.ps);
++      sw.s.push(pt.s);
++      dirtyRef.current = true;
++      sweepTimer.current = window.setTimeout(step, 0);
++    };
++    sweepTimer.current = window.setTimeout(step, 0);
++  }, []);
++
++  const queueSweep = useCallback(() => {
++    window.clearTimeout(sweepDebounce.current);
++    sweepDebounce.current = window.setTimeout(runSweep, 600);
++  }, [runSweep]);
++
++  const update = useCallback((patch: Partial<Controls>) => {
++    const prev = controlsRef.current;
++    const next = { ...prev, ...patch };
++    controlsRef.current = next;
++    setControls(next);
++    dirtyRef.current = true;
++    if (next.n !== prev.n) {
++      restart(next.n);
++      queueSweep();
++    } else if (next.sigma !== prev.sigma) {
++      queueSweep();
++    }
++  }, [restart, queueSweep]);
++
++  useEffect(() => {
++    restart(controlsRef.current.n);
++    runSweep();
++    const first = drawAll();
++    if (first) setLive(first);
++
++    let raf = 0;
++    let lastUi = 0;
++    const frame = (now: number) => {
++      raf = requestAnimationFrame(frame);
++      const root = rootRef.current;
++      // DevTerminal mantiene montadas las páginas visitadas pero con `inert`; no gastar CPU ahí.
++      if (!root || root.closest("[inert]")) return;
++      const shouldAdvance = runningRef.current;
++      if (shouldAdvance) advance(controlsRef.current.speed);
++      if (shouldAdvance || dirtyRef.current) {
++        dirtyRef.current = false;
++        const next = drawAll();
++        if (next && now - lastUi > 100) {
++          lastUi = now;
++          setLive(next);
++        }
++      }
++    };
++    raf = requestAnimationFrame(frame);
++
++    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(() => { dirtyRef.current = true; }) : null;
++    if (observer && rootRef.current) observer.observe(rootRef.current);
++
++    return () => {
++      cancelAnimationFrame(raf);
++      observer?.disconnect();
++      sweepToken.current += 1;
++      window.clearTimeout(sweepTimer.current);
++      window.clearTimeout(sweepDebounce.current);
++    };
++  }, [advance, drawAll, restart, runSweep]);
++
++  const toggleRunning = () => {
++    runningRef.current = !runningRef.current;
++    setRunning(runningRef.current);
++  };
++
++  const c = c4105(live.om, live.ps, controls.kin, live.s, controls.pin);
++  const state = stateOf(live.om);
++  const pct = (v: number) => v.toFixed(2);
++
++  return (
++    <main ref={rootRef} className="relative h-full overflow-y-auto bg-[#080b10] text-[#eef3f8]">
++      <div aria-hidden className="pointer-events-none absolute inset-0 opacity-40" style={{
++        backgroundImage: "linear-gradient(rgba(0,240,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(0,240,255,.035) 1px,transparent 1px)",
++        backgroundSize: "38px 38px",
++        maskImage: "linear-gradient(to bottom, black, transparent 85%)",
++      }} />
++      <div className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col gap-5 px-5 py-7 sm:px-8 sm:py-10">
++        <header className="flex flex-wrap items-end justify-between gap-5 border-b border-white/10 pb-6">
++          <div>
++            <div className="mb-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.22em] text-[#00f0ff]">
++              <Activity className="h-3.5 w-3.5" aria-hidden /> DevTerminal / Dinámica de osciladores
++            </div>
++            <h1 className="font-mono text-3xl font-bold tracking-[-.06em] sm:text-4xl">KURAMOTO 4105<span className="text-[#00f0ff]">.</span></h1>
++            <p className="mt-2 max-w-2xl text-sm leading-6 text-[#8794a1]">
++              Osciladores acoplados que se sincronizan al subir K. A diferencia del Motor 5.5, que genera vectores aleatorios, aquí Ω, Ψ y S se calculan de las fases.
++            </p>
++          </div>
++          <div className="flex gap-2">
++            <button
++              type="button"
++              onClick={toggleRunning}
++              className="inline-flex min-h-10 items-center gap-2 bg-[#00f0ff] px-4 font-mono text-xs font-bold uppercase tracking-[.12em] text-[#061014] transition hover:bg-[#8affff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00f0ff]"
++            >
++              {running ? <Square className="h-3.5 w-3.5 fill-current" aria-hidden /> : <Play className="h-4 w-4 fill-current" aria-hidden />}
++              {running ? "Pausar" : "Reanudar"}
++            </button>
++            <button
++              type="button"
++              onClick={() => restart(controlsRef.current.n)}
++              className="inline-flex min-h-10 items-center border border-white/15 px-4 font-mono text-xs font-bold uppercase tracking-[.12em] text-[#cbd4dc] transition hover:border-[#00f0ff]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00f0ff]"
++            >
++              Reiniciar
++            </button>
++          </div>
++        </header>
++
++        <section aria-label="Resumen" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
++          <Tile label="Coherencia Ω" value={pct(live.om)} hint="r de Kuramoto, de 0 a 1" />
++          <Tile label="Alineación Ψ" value={pct(live.ps)} hint="cercanía media a la fase colectiva" />
++          <Tile label="Entropía S" value={pct(live.s)} hint="dispersión de fases, de 0 a 1" />
++          <Tile label="Índice C4105" value={pct(c)} accent>
++            <div className="mt-2 flex items-center gap-2 text-xs font-medium" style={{ color: state.color }}>
++              <span className="h-2 w-2 rounded-full" style={{ background: state.color }} /> {state.label}
++            </div>
++          </Tile>
++        </section>
++
++        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
++          <div className="flex min-w-0 flex-col gap-5">
++            <section className="border border-white/10 bg-[#0c1118] p-4 sm:p-5">
++              <h2 className="mb-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.16em] text-[#00f0ff]">
++                <Gauge className="h-4 w-4" aria-hidden /> Fases de los osciladores
++              </h2>
++              <div className="flex flex-wrap items-center gap-5">
++                <canvas
++                  ref={cvPhase}
++                  role="img"
++                  aria-label="Posición de cada oscilador sobre el círculo de fases y flecha de la fase colectiva"
++                  className="block aspect-square w-full max-w-[300px]"
++                />
++                <div className="flex min-w-0 flex-1 basis-52 flex-col gap-2 text-sm text-[#8794a1]">
++                  <div><span className="mr-2 inline-block h-2 w-2 rounded-full bg-[#00f0ff]" />Bloqueados a la fase colectiva: <b className="font-mono font-medium tabular-nums text-[#eef3f8]">{live.locked}%</b></div>
++                  <div><span className="mr-2 inline-block h-2 w-2 rounded-full bg-[#ff526e]" />Libres, giran a su propio ritmo: <b className="font-mono font-medium tabular-nums text-[#eef3f8]">{100 - live.locked}%</b></div>
++                  <p>La flecha blanca apunta a la fase colectiva. Su largo es Ω.</p>
++                </div>
++              </div>
++            </section>
++
++            <section className="border border-white/10 bg-[#0c1118] p-4 sm:p-5">
++              <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[.16em] text-[#00f0ff]">Evolución en el tiempo</h2>
++              <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#84909b]">
++                <span><i className="mr-1.5 inline-block h-[3px] w-4 align-middle" style={{ background: COLORS.om }} />Ω</span>
++                <span><i className="mr-1.5 inline-block h-[3px] w-4 align-middle" style={{ background: COLORS.ps }} />Ψ</span>
++                <span><i className="mr-1.5 inline-block h-[3px] w-4 align-middle" style={{ background: COLORS.en }} />S</span>
++                <span><i className="mr-1.5 inline-block h-[3px] w-4 align-middle" style={{ background: COLORS.ink }} />C4105</span>
++              </div>
++              <canvas ref={cvSeries} role="img" aria-label="Ω, Ψ, S y C4105 en función del tiempo" className="block h-[250px] w-full" />
++            </section>
++          </div>
++
++          <aside aria-label="Controles" className="border border-white/10 bg-[#0c1118] p-4 sm:p-5">
++            <h2 className="mb-4 font-mono text-[10px] uppercase tracking-[.16em] text-[#00f0ff]">Controles</h2>
++            <Slider id="kur-k" label="Acoplamiento K" value={controls.K} min={0} max={6} step={0.05} format={(v) => v.toFixed(2)}
++              note={`Kc teórico ≈ ${kcTheory(controls.sigma).toFixed(2)} para σ = ${controls.sigma.toFixed(2)}`} onChange={(K) => update({ K })} />
++            <Slider id="kur-n" label="Osciladores N" value={controls.n} min={20} max={500} step={10} format={(v) => String(v)} onChange={(n) => update({ n })} />
++            <Slider id="kur-sigma" label="Dispersión de frecuencias σ" value={controls.sigma} min={0.2} max={2} step={0.05} format={(v) => v.toFixed(2)} onChange={(sigma) => update({ sigma })} />
++            <Slider id="kur-kin" label="K de entrada" value={controls.kin} min={0} max={1} step={0.01} format={(v) => v.toFixed(2)}
++              note="Valor que tú fijas. El panel no lo mide." onChange={(kin) => update({ kin })} />
++            <Slider id="kur-pin" label="P de entrada" value={controls.pin} min={0} max={1} step={0.01} format={(v) => v.toFixed(2)}
++              note="Valor que tú fijas. El panel no lo mide." onChange={(pin) => update({ pin })} />
++            <Slider id="kur-speed" label="Velocidad" value={controls.speed} min={1} max={12} step={1} format={(v) => String(v)} onChange={(speed) => update({ speed })} />
++            <p className="font-mono text-xs text-[#75818d]">C = (Ω + Ψ + K + P + (1 − S)) / 5</p>
++          </aside>
++        </div>
++
++        <section className="border border-white/10 bg-[#0c1118] p-4 sm:p-5">
++          <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[.16em] text-[#00f0ff]">Barrido de acoplamiento</h2>
++          <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#84909b]">
++            <span><i className="mr-1.5 inline-block h-[3px] w-4 align-middle" style={{ background: COLORS.om }} />Ω final</span>
++            <span><i className="mr-1.5 inline-block h-[3px] w-4 align-middle" style={{ background: COLORS.ink }} />C4105 final</span>
++            <span><i className="mr-1.5 inline-block h-[3px] w-4 align-middle" style={{ background: COLORS.muted }} />Kc teórico</span>
++          </div>
++          <canvas ref={cvSweep} role="img" aria-label="Ω y C4105 finales según el acoplamiento K" className="block h-[250px] w-full" />
++          <p className="mt-2 text-xs text-[#75818d]">
++            {sweepDone
++              ? "Cada punto promedia el último cuarto de una corrida de 30 unidades de tiempo, con los mismos N y σ de la simulación."
++              : "Calculando barrido…"}
++          </p>
++        </section>
++
++        <footer className="border-t border-white/[.07] pt-4 font-mono text-[9px] uppercase tracking-[.12em] text-[#626f7a]">
++          Kuramoto de campo medio · RK4 · semilla de la Secuencia S · se calcula en el navegador, sin llamadas al servidor
++        </footer>
++      </div>
++    </main>
++  );
++}
+-- 
+2.43.0
+
